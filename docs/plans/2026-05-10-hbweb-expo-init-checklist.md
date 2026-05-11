@@ -184,7 +184,7 @@ module.exports = function (api) {
 
 ```powershell
 Set-Content -Path .env.development -Value @'
-EXPO_PUBLIC_API_BASE_URL=http://localhost:5000/api
+EXPO_PUBLIC_API_BASE_URL=http://localhost:5001/api
 EXPO_PUBLIC_APP_ENV=development
 '@
 ```
@@ -663,7 +663,7 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from "axios"
 import { router } from "expo-router"
 import { SecureStorage } from "@/shared/storage/secure"
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:5000/api"
+const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:5001/api"
 
 function unwrapEnvelope<T>(payload: unknown): T {
   let current = payload
@@ -739,7 +739,7 @@ export function hashPassword(password: string): string {
 
 ```powershell
 Set-Content -Path src\shared\types\index.ts -Value "export interface ApiResponse<T = unknown> { success?: boolean; isSuccess?: boolean; message?: string; data?: T; code?: string }"
-Set-Content -Path src\shared\constants\api.ts -Value "export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:5000/api'; export const API_TIMEOUT = 15000;"
+Set-Content -Path src\shared\constants\api.ts -Value "export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:5001/api'; export const API_TIMEOUT = 15000;"
 ```
 
 ---

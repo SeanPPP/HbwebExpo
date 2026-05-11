@@ -1,0 +1,11 @@
+---
+description: 默认不使用交互式反馈型 MCP
+alwaysApply: true
+---
+
+# No Interactive Feedback MCP
+
+- 默认不要调用任何交互式反馈型 MCP，包含但不限于 `mcp-feedback-enhanced`。
+- 不要主动发起反馈收集、满意度询问、阶段性意见征集或类似交互。
+- 只有当用户明确要求使用反馈型 MCP 或明确要求进入反馈收集流程时，才允许调用相关工具或流程。
+- 若历史规则与本规则冲突，优先遵循本规则。
