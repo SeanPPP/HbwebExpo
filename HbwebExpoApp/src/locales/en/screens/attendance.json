@@ -14,6 +14,17 @@
     "managerSchedule": "Manager schedule",
     "holidayManagement": "Public holidays"
   },
+  "tabs": {
+    "personalAttendance": "Attendance",
+    "attendanceManagement": "Attendance Admin",
+    "personalPunch": "Personal punch",
+    "punchRecords": "Punch records",
+    "personalAvailability": "Availability",
+    "weeklySchedule": "Weekly schedule",
+    "scheduleManagement": "Schedule",
+    "holidayManagement": "Holidays",
+    "leaveManagement": "Leave"
+  },
   "today": {
     "schedules": "Today's shifts",
     "punches": "Punches",
@@ -83,6 +94,8 @@
     "noStore": "Select a store first",
     "empty": "No public holidays for this store.",
     "addAction": "Add holiday",
+    "syncAction": "Sync next 30 days",
+    "syncUnsupportedJurisdiction": "This store must have an NSW or QLD postcode/state before syncing public holidays.",
     "deleteTitle": "Delete holiday",
     "deleteMessage": "Delete this public holiday?",
     "deleteConfirm": "Delete",
@@ -96,6 +109,35 @@
       "Open": "Open",
       "Closed": "Closed",
       "Partial": "Partial"
+    }
+  },
+  "leaveManagement": {
+    "empty": "No sick or annual leave approvals pending",
+    "noStore": "Select a store first",
+    "noEligibleEmployees": "There are no full-time or part-time employees in this store who can submit annual or sick leave.",
+    "attachmentRequired": "Sick leave requires a medical certificate photo.",
+    "fields": {
+      "employee": "Employee",
+      "attachment": "Medical certificate photo"
+    },
+    "actions": {
+      "takePhoto": "Take photo",
+      "retakePhoto": "Retake photo",
+      "grantCameraPermission": "Allow camera",
+      "capture": "Capture"
+    },
+    "messages": {
+      "permissionRequired": "Camera permission is required to take a photo.",
+      "captureFailed": "Failed to take a photo. Please try again.",
+      "uploadFailed": "Failed to upload the photo.",
+      "attachmentUploaded": "Medical certificate photo uploaded.",
+      "attachmentRequired": "Please upload a medical certificate photo first.",
+      "cameraReady": "Take a clear photo of the medical certificate and upload it."
+    },
+    "camera": {
+      "title": "Take medical certificate photo",
+      "permissionTitle": "Camera access required",
+      "permissionDescription": "Allow camera access to take and upload a medical certificate photo for sick leave."
     }
   },
   "scheduleManagement": {
@@ -137,10 +179,18 @@
       "minute": "MM"
     }
   },
+  "datePicker": {
+    "selectDate": "Select date",
+    "openDatePicker": "Open date picker",
+    "close": "Close",
+    "done": "Done"
+  },
   "fields": {
     "workDate": "Date",
     "startTime": "Start time",
     "endTime": "End time",
+    "startTimeOptional": "Start time (optional)",
+    "endTimeOptional": "End time (optional)",
     "note": "Note",
     "startDate": "Start date",
     "endDate": "End date",
@@ -219,6 +269,7 @@
     "weekPublished": "This week's schedule was published.",
     "publishFailed": "Publish failed.",
     "holidaySaved": "Public holiday saved.",
-    "holidayDeleted": "Public holiday deleted."
+    "holidayDeleted": "Public holiday deleted.",
+    "holidaySyncSuccess": "Synced {{count}} public holidays."
   }
 }

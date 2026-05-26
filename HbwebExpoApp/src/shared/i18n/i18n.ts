@@ -7,10 +7,13 @@ import domesticPurchaseEn from "@/locales/en/screens/domesticPurchase.json";
 import deviceManagementEn from "@/locales/en/screens/deviceManagement.json";
 import employeeProfileEn from "@/locales/en/screens/employeeProfile.json";
 import homeEn from "@/locales/en/screens/home.json";
+import installmentOrdersEn from "@/locales/en/screens/installmentOrders.json";
+import localSupplierInvoicesEn from "@/locales/en/screens/localSupplierInvoices.json";
 import loginEn from "@/locales/en/screens/login.json";
 import ordersEn from "@/locales/en/screens/orders.json";
 import productQueryEn from "@/locales/en/screens/productQuery.json";
 import settingsEn from "@/locales/en/screens/settings.json";
+import storeVouchersEn from "@/locales/en/screens/storeVouchers.json";
 import userManagementEn from "@/locales/en/screens/userManagement.json";
 import warehouseEn from "@/locales/en/screens/warehouse.json";
 import commonZh from "@/locales/zh/common.json";
@@ -20,10 +23,13 @@ import domesticPurchaseZh from "@/locales/zh/screens/domesticPurchase.json";
 import deviceManagementZh from "@/locales/zh/screens/deviceManagement.json";
 import employeeProfileZh from "@/locales/zh/screens/employeeProfile.json";
 import homeZh from "@/locales/zh/screens/home.json";
+import installmentOrdersZh from "@/locales/zh/screens/installmentOrders.json";
+import localSupplierInvoicesZh from "@/locales/zh/screens/localSupplierInvoices.json";
 import loginZh from "@/locales/zh/screens/login.json";
 import ordersZh from "@/locales/zh/screens/orders.json";
 import productQueryZh from "@/locales/zh/screens/productQuery.json";
 import settingsZh from "@/locales/zh/screens/settings.json";
+import storeVouchersZh from "@/locales/zh/screens/storeVouchers.json";
 import userManagementZh from "@/locales/zh/screens/userManagement.json";
 import warehouseZh from "@/locales/zh/screens/warehouse.json";
 import { getStoredLanguage, setStoredLanguage } from "@/shared/i18n/storage";
@@ -39,12 +45,15 @@ const resources = {
     attendance: attendanceZh,
     login: loginZh,
     home: homeZh,
+    installmentOrders: installmentOrdersZh,
+    localSupplierInvoices: localSupplierInvoicesZh,
     cart: cartZh,
     domesticPurchase: domesticPurchaseZh,
     deviceManagement: deviceManagementZh,
     employeeProfile: employeeProfileZh,
     orders: ordersZh,
     settings: settingsZh,
+    storeVouchers: storeVouchersZh,
     productQuery: productQueryZh,
     userManagement: userManagementZh,
     warehouse: warehouseZh,
@@ -54,12 +63,15 @@ const resources = {
     attendance: attendanceEn,
     login: loginEn,
     home: homeEn,
+    installmentOrders: installmentOrdersEn,
+    localSupplierInvoices: localSupplierInvoicesEn,
     cart: cartEn,
     domesticPurchase: domesticPurchaseEn,
     deviceManagement: deviceManagementEn,
     employeeProfile: employeeProfileEn,
     orders: ordersEn,
     settings: settingsEn,
+    storeVouchers: storeVouchersEn,
     productQuery: productQueryEn,
     userManagement: userManagementEn,
     warehouse: warehouseEn,
@@ -88,7 +100,7 @@ if (!i18n.isInitialized) {
     lng: DEFAULT_APP_LANGUAGE,
     fallbackLng: DEFAULT_APP_LANGUAGE,
     defaultNS: "common",
-    ns: ["common", "attendance", "login", "home", "cart", "domesticPurchase", "deviceManagement", "employeeProfile", "orders", "settings", "productQuery", "userManagement", "warehouse"],
+    ns: ["common", "attendance", "login", "home", "cart", "domesticPurchase", "deviceManagement", "employeeProfile", "installmentOrders", "localSupplierInvoices", "orders", "settings", "storeVouchers", "productQuery", "userManagement", "warehouse"],
     interpolation: {
       escapeValue: false,
     },

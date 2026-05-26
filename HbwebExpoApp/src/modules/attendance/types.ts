@@ -44,6 +44,7 @@ export type AttendanceApprovalStatus = "Pending" | "Approved" | "Rejected" | str
 export type AttendanceScheduleStatus = "Draft" | "Active" | "Cancelled" | string;
 
 export type AttendanceHolidayBusinessStatus = "Open" | "Closed" | "Partial" | string;
+export type AttendanceHolidayJurisdiction = "NSW" | "QLD";
 
 export interface AttendanceSchedule {
   scheduleGuid: string;
@@ -189,6 +190,30 @@ export interface AttendanceHolidayQueryParams {
   toDate?: string;
 }
 
+export interface AttendanceHolidaySyncPayload {
+  storeCode?: string;
+  postcode?: string;
+  jurisdiction?: AttendanceHolidayJurisdiction;
+  stateCode?: AttendanceHolidayJurisdiction;
+  fromDate?: string;
+  toDate?: string;
+  daysAhead?: number;
+}
+
+export interface AttendanceHolidaySyncResult {
+  storeCode?: string;
+  jurisdiction?: AttendanceHolidayJurisdiction;
+  fromDate: string;
+  toDate: string;
+  syncedCount: number;
+  createdCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  holidays: AttendanceStoreHoliday[];
+  skippedStores?: string[];
+  syncedAt?: string;
+}
+
 export interface AttendanceLeaveRequest {
   leaveGuid: string;
   storeCode?: string;
@@ -196,17 +221,42 @@ export interface AttendanceLeaveRequest {
   leaveType: AttendanceLeaveType;
   startDate: string;
   endDate: string;
+  startTime?: string;
+  endTime?: string;
   reason?: string;
+  attachmentUrl?: string;
   status: AttendanceApprovalStatus;
   submittedAt?: string;
 }
 
 export interface AttendanceLeaveRequestPayload {
+  userGuid?: string;
   storeCode?: string;
   leaveType: AttendanceLeaveType;
   startDate: string;
   endDate: string;
+  startTime?: string;
+  endTime?: string;
   reason?: string;
+  attachmentUrl?: string;
+}
+
+export interface AttendanceDirectUploadRequest {
+  fileName: string;
+  contentType: string;
+  fileSize: number;
+  objectKey?: string | null;
+}
+
+export interface AttendanceDirectUploadSignature {
+  url: string;
+  objectKey: string;
+  headers: Record<string, string>;
+}
+
+export interface AttendanceLeaveAttachmentUploadResult {
+  objectKey: string;
+  downloadUrl: string;
 }
 
 export interface AttendanceApproval {

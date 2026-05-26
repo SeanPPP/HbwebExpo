@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
+import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
 import {
   ActivityIndicator,
@@ -10,6 +11,7 @@ import {
   Menu,
   Modal,
   Portal,
+  SegmentedButtons,
   Snackbar,
   Text,
   TextInput,
@@ -28,6 +30,7 @@ import {
   fetchProductPrefixes,
   updateDomesticProductBatchItems,
 } from "@/modules/domestic-purchase/api";
+import { DomesticProductList } from "@/modules/domestic-purchase/DomesticProductList";
 import type {
   DomesticProductBatch,
   DomesticProductBatchDetail,
@@ -38,6 +41,8 @@ import type {
 import { ProductCreationType } from "@/modules/domestic-purchase/types";
 
 const PAGE_SIZE = 20;
+
+type DomesticPurchaseTab = "creation" | "products";
 
 interface DetailEditState {
   productName: string;
@@ -75,6 +80,28 @@ function buildDetailEdits(items: DomesticProductBatchItem[]) {
   }, {});
 }
 
+function formatCopyValue(value?: string | null) {
+  const nextValue = value?.trim();
+  return nextValue ? nextValue : "--";
+}
+
+function buildBatchDetailCopyText(items: DomesticProductBatchItem[]) {
+  if (items.length === 0) {
+    return "";
+  }
+
+  const rows = items.map((item) => {
+    const productNo = formatCopyValue(item.hbProductNo || item.itemNumber || item.productCode);
+    const barcode = formatCopyValue(item.barcode);
+    const privateLabelPrice =
+      item.privateLabelPrice == null || !Number.isFinite(item.privateLabelPrice) ? "--" : String(item.privateLabelPrice);
+
+    return `${productNo} ${barcode} ${privateLabelPrice}`;
+  });
+
+  return ["货号 条码 贴牌价格", ...rows].join("\n");
+}
+
 function typeLabel(type: ProductCreationType, t: (key: string) => string) {
   if (type === ProductCreationType.Set) {
     return t("types.set");
@@ -93,12 +120,14 @@ export default function DomesticPurchaseScreen() {
   const hasAccess =
     access.isAdmin || access.isWarehouseManager || access.hasPermission("DomesticPurchase.ManageProducts");
 
+  const [activeTab, setActiveTab] = useState<DomesticPurchaseTab>("creation");
   const [batches, setBatches] = useState<DomesticProductBatch[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [copyingBatchNumber, setCopyingBatchNumber] = useState("");
   const [loadErrorMessage, setLoadErrorMessage] = useState("");
   const [snackbar, setSnackbar] = useState("");
 
@@ -157,8 +186,10 @@ export default function DomesticPurchaseScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void loadBatches(1, "replace");
-    }, [loadBatches])
+      if (activeTab === "creation") {
+        void loadBatches(1, "replace");
+      }
+    }, [activeTab, loadBatches])
   );
 
   useEffect(() => {
@@ -270,6 +301,29 @@ export default function DomesticPurchaseScreen() {
     [t]
   );
 
+  const handleCopyBatch = useCallback(
+    async (batchNumber: string) => {
+      setCopyingBatchNumber(batchNumber);
+      try {
+        const nextDetail = await fetchDomesticProductBatchDetail(batchNumber);
+        const copyText = buildBatchDetailCopyText(nextDetail.items);
+
+        if (!copyText) {
+          setSnackbar(t("messages.copyEmpty"));
+          return;
+        }
+
+        await Clipboard.setStringAsync(copyText);
+        setSnackbar(t("messages.copySuccess"));
+      } catch (error) {
+        setSnackbar(error instanceof Error ? error.message : t("messages.copyFailed"));
+      } finally {
+        setCopyingBatchNumber("");
+      }
+    },
+    [t]
+  );
+
   const updateDetailEdit = useCallback((key: string, patch: Partial<DetailEditState>) => {
     setDetailEdits((current) => ({
       ...current,
@@ -322,8 +376,11 @@ export default function DomesticPurchaseScreen() {
   }, [detail, detailEdits, selectedBatch, t]);
 
   const summaryText = useMemo(
-    () => t("summary", { total, shown: batches.length }),
-    [batches.length, t, total]
+    () =>
+      activeTab === "products"
+        ? t("productList.headerSubtitle")
+        : t("summary", { total, shown: batches.length }),
+    [activeTab, batches.length, t, total]
   );
 
   if (!hasAccess) {
@@ -353,93 +410,118 @@ export default function DomesticPurchaseScreen() {
             {summaryText}
           </Text>
         </View>
-        <Button mode="contained" icon="plus" compact onPress={() => setCreateVisible(true)}>
-          {t("actions.create")}
-        </Button>
+        {activeTab === "creation" ? (
+          <Button mode="contained" icon="plus" compact onPress={() => setCreateVisible(true)}>
+            {t("actions.create")}
+          </Button>
+        ) : null}
       </View>
 
-      <FlatList
-        data={batches}
-        keyExtractor={(item) => item.batchNumber}
-        contentContainerStyle={batches.length ? styles.listContent : styles.emptyContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              void loadBatches(1, "replace");
-            }}
-          />
-        }
-        ListEmptyComponent={
-          loading ? (
-            <ActivityIndicator style={styles.emptyLoader} />
-          ) : loadErrorMessage ? (
-            <EmptyState
-              title={t("messages.loadFailed")}
-              description={loadErrorMessage}
-              primaryAction={{
-                label: t("common:actions.retry"),
-                icon: "refresh",
-                onPress: () => void loadBatches(1, "replace"),
+      <SegmentedButtons
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as DomesticPurchaseTab)}
+        buttons={[
+          { value: "creation", label: t("subTabs.creation") },
+          { value: "products", label: t("subTabs.products") },
+        ]}
+        style={styles.tabSwitcher}
+      />
+
+      {activeTab === "creation" ? (
+        <FlatList
+          data={batches}
+          keyExtractor={(item) => item.batchNumber}
+          contentContainerStyle={batches.length ? styles.listContent : styles.emptyContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                void loadBatches(1, "replace");
               }}
             />
-          ) : (
-            <EmptyState title={t("empty.noBatchTitle")} description={t("empty.noBatchDescription")} />
-          )
-        }
-        renderItem={({ item }) => (
-          <Card mode="outlined" style={styles.batchCard}>
-            <Card.Content style={styles.batchCardContent}>
-              <View style={styles.batchHeader}>
-                <View style={styles.batchTitleBlock}>
-                  <Text variant="titleMedium" style={styles.batchNumber}>
-                    {item.batchNumber}
-                  </Text>
-                  <Text variant="bodySmall" style={styles.mutedText}>
-                    {item.supplierCode} {item.supplierName ? `- ${item.supplierName}` : ""}
+          }
+          ListEmptyComponent={
+            loading ? (
+              <ActivityIndicator style={styles.emptyLoader} />
+            ) : loadErrorMessage ? (
+              <EmptyState
+                title={t("messages.loadFailed")}
+                description={loadErrorMessage}
+                primaryAction={{
+                  label: t("common:actions.retry"),
+                  icon: "refresh",
+                  onPress: () => void loadBatches(1, "replace"),
+                }}
+              />
+            ) : (
+              <EmptyState title={t("empty.noBatchTitle")} description={t("empty.noBatchDescription")} />
+            )
+          }
+          renderItem={({ item }) => (
+            <Card mode="outlined" style={styles.batchCard}>
+              <Card.Content style={styles.batchCardContent}>
+                <View style={styles.batchHeader}>
+                  <View style={styles.batchTitleBlock}>
+                    <Text variant="titleMedium" style={styles.batchNumber}>
+                      {item.batchNumber}
+                    </Text>
+                    <Text variant="bodySmall" style={styles.mutedText}>
+                      {item.supplierCode} {item.supplierName ? `- ${item.supplierName}` : ""}
+                    </Text>
+                  </View>
+                  <Text variant="labelMedium" style={styles.countBadge}>
+                    {item.totalCount}
                   </Text>
                 </View>
-                <Text variant="labelMedium" style={styles.countBadge}>
-                  {item.totalCount}
-                </Text>
-              </View>
-              <View style={styles.metricRow}>
-                <Text variant="bodySmall" style={styles.mutedText}>
-                  {t("fields.normalCount", { value: item.normalCount })}
-                </Text>
-                <Text variant="bodySmall" style={styles.mutedText}>
-                  {t("fields.setCount", { value: item.setCount })}
-                </Text>
-                <Text variant="bodySmall" style={styles.mutedText}>
-                  {formatDateTime(item.createdAt, localeTag)}
-                </Text>
-              </View>
-              <View style={styles.cardActions}>
-                <Button compact mode="outlined" onPress={() => openDetail(item)}>
-                  {t("actions.detail")}
-                </Button>
-                <Button compact icon="download" onPress={() => handleExport(item.batchNumber)} disabled={busy}>
-                  {t("actions.export")}
-                </Button>
-              </View>
-            </Card.Content>
-          </Card>
-        )}
-        ListFooterComponent={
-          hasMore ? (
-            <Button
-              mode="outlined"
-              loading={loading}
-              disabled={loading}
-              style={styles.loadMoreButton}
-              onPress={() => loadBatches(page + 1, "append")}
-            >
-              {t("actions.loadMore")}
-            </Button>
-          ) : null
-        }
-      />
+                <View style={styles.metricRow}>
+                  <Text variant="bodySmall" style={styles.mutedText}>
+                    {t("fields.normalCount", { value: item.normalCount })}
+                  </Text>
+                  <Text variant="bodySmall" style={styles.mutedText}>
+                    {t("fields.setCount", { value: item.setCount })}
+                  </Text>
+                  <Text variant="bodySmall" style={styles.mutedText}>
+                    {formatDateTime(item.createdAt, localeTag)}
+                  </Text>
+                </View>
+                <View style={styles.cardActions}>
+                  <Button compact mode="outlined" onPress={() => openDetail(item)}>
+                    {t("actions.detail")}
+                  </Button>
+                  <Button
+                    compact
+                    icon="content-copy"
+                    onPress={() => handleCopyBatch(item.batchNumber)}
+                    loading={copyingBatchNumber === item.batchNumber}
+                    disabled={copyingBatchNumber === item.batchNumber || busy}
+                  >
+                    {t("actions.copy")}
+                  </Button>
+                  <Button compact icon="download" onPress={() => handleExport(item.batchNumber)} disabled={busy}>
+                    {t("actions.export")}
+                  </Button>
+                </View>
+              </Card.Content>
+            </Card>
+          )}
+          ListFooterComponent={
+            hasMore ? (
+              <Button
+                mode="outlined"
+                loading={loading}
+                disabled={loading}
+                style={styles.loadMoreButton}
+                onPress={() => loadBatches(page + 1, "append")}
+              >
+                {t("actions.loadMore")}
+              </Button>
+            ) : null
+          }
+        />
+      ) : (
+        <DomesticProductList />
+      )}
 
       <Portal>
         <Modal
@@ -663,6 +745,10 @@ const styles = StyleSheet.create({
   subtitle: {
     color: "#667085",
     marginTop: 2,
+  },
+  tabSwitcher: {
+    marginHorizontal: 12,
+    marginBottom: 8,
   },
   listContent: {
     padding: 12,
