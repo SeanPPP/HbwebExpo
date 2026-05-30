@@ -15,6 +15,7 @@ import {
 import { usePrinterStore, type PrinterConnectionState } from "@/modules/printer/state";
 import type { PrinterDevice } from "@/modules/printer/types";
 import { setAppLanguage } from "@/shared/i18n/i18n";
+import { resolveLocalizedErrorMessage } from "@/shared/i18n/error-message";
 import { useAppTranslation } from "@/shared/i18n/use-app-translation";
 import type { AppLanguage } from "@/shared/i18n/types";
 import { useAuthStore } from "@/store/auth-store";
@@ -71,14 +72,15 @@ export default function Settings() {
   const [printerBusy, setPrinterBusy] = useState(false);
   const [filterXPOnly, setFilterXPOnly] = useState(true);
 
-  const canRegisterDevice = access.isStoreManager || access.hasRole("店长");
+  const canRegisterDevice = access.canManageDeviceRegistration;
   const settingsAuthMode = resolveSettingsAuthMode({
     hasUser: Boolean(user),
     hasDeviceSession: Boolean(deviceSession),
   });
   const isDeviceMode = settingsAuthMode === "device";
   const showProfileAction = shouldShowProfileAction(settingsAuthMode);
-  const canViewDeviceCard = canRegisterDevice || Boolean(deviceSession);
+  const canViewDeviceCard =
+    canRegisterDevice || access.canViewDeviceRegistration || Boolean(deviceSession);
 
   const effectiveStore = selectedStore
     ? selectedStore
@@ -134,7 +136,11 @@ export default function Settings() {
         return;
       }
 
-      const message = error instanceof Error ? error.message : "Printer status check failed.";
+      const message = resolveLocalizedErrorMessage(error, {
+        language,
+        t,
+        fallbackKey: "dialogs.refreshFailedMessage",
+      });
       const store = usePrinterStore.getState();
       store.setLastError(message);
       store.setStatus("error");
@@ -148,6 +154,13 @@ export default function Settings() {
   const isPrinterConnected = printerStatus === "connected";
   const isPrinterConnecting = printerStatus === "connecting";
   const isPrinterReconnecting = printerStatus === "reconnecting";
+
+  const getErrorMessage = (error: unknown, fallbackKey: string) =>
+    resolveLocalizedErrorMessage(error, {
+      language,
+      t,
+      fallbackKey,
+    });
 
   function resolvePrinterStatusText(
     status: PrinterConnectionState,
@@ -207,7 +220,7 @@ export default function Settings() {
             } catch (error) {
               Alert.alert(
                 t("dialogs.unbindDeviceFailedTitle"),
-                error instanceof Error ? error.message : t("dialogs.unbindDeviceFailedMessage")
+                getErrorMessage(error, "dialogs.unbindDeviceFailedMessage")
               );
             } finally {
               setIsSubmitting(false);
@@ -248,7 +261,7 @@ export default function Settings() {
     } catch (error) {
       Alert.alert(
         t("dialogs.registerFailedTitle"),
-        error instanceof Error ? error.message : t("dialogs.registerFailedMessage")
+        getErrorMessage(error, "dialogs.registerFailedMessage")
       );
     } finally {
       setIsSubmitting(false);
@@ -266,7 +279,7 @@ export default function Settings() {
     } catch (error) {
       Alert.alert(
         t("dialogs.refreshFailedTitle"),
-        error instanceof Error ? error.message : t("dialogs.refreshFailedMessage")
+        getErrorMessage(error, "dialogs.refreshFailedMessage")
       );
     } finally {
       setIsSubmitting(false);
@@ -281,7 +294,7 @@ export default function Settings() {
     } catch (error) {
       Alert.alert(
         t("dialogs.printerScanFailedTitle"),
-        error instanceof Error ? error.message : t("dialogs.refreshFailedMessage")
+        getErrorMessage(error, "dialogs.refreshFailedMessage")
       );
     } finally {
       setPrinterBusy(false);
@@ -299,7 +312,7 @@ export default function Settings() {
     } catch (error) {
       Alert.alert(
         t("dialogs.printerConnectFailedTitle"),
-        error instanceof Error ? error.message : t("dialogs.refreshFailedMessage")
+        getErrorMessage(error, "dialogs.refreshFailedMessage")
       );
     } finally {
       setPrinterBusy(false);
@@ -314,7 +327,7 @@ export default function Settings() {
     } catch (error) {
       Alert.alert(
         t("dialogs.printerTestFailedTitle"),
-        error instanceof Error ? error.message : t("dialogs.refreshFailedMessage")
+        getErrorMessage(error, "dialogs.refreshFailedMessage")
       );
     } finally {
       setPrinterBusy(false);
@@ -329,7 +342,7 @@ export default function Settings() {
     } catch (error) {
       Alert.alert(
         t("dialogs.printerDisconnectFailedTitle"),
-        error instanceof Error ? error.message : t("dialogs.refreshFailedMessage")
+        getErrorMessage(error, "dialogs.refreshFailedMessage")
       );
     } finally {
       setPrinterBusy(false);
@@ -343,7 +356,7 @@ export default function Settings() {
     } catch (error) {
       Alert.alert(
         t("dialogs.printerConnectFailedTitle"),
-        error instanceof Error ? error.message : t("dialogs.refreshFailedMessage")
+        getErrorMessage(error, "dialogs.refreshFailedMessage")
       );
     } finally {
       setPrinterBusy(false);
@@ -357,7 +370,7 @@ export default function Settings() {
     } catch (error) {
       Alert.alert(
         t("dialogs.printerDisconnectFailedTitle"),
-        error instanceof Error ? error.message : t("dialogs.refreshFailedMessage")
+        getErrorMessage(error, "dialogs.refreshFailedMessage")
       );
     } finally {
       setPrinterBusy(false);

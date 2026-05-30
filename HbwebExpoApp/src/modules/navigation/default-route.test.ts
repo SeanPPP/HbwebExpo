@@ -1,4 +1,5 @@
 import {
+  getVisibleTabRouteNames,
   expandAttendanceRouteNames,
   resolveDefaultTabRoute,
   resolveTabRouteCorrection,
@@ -11,6 +12,12 @@ function assertEqual(actual: unknown, expected: unknown, label: string) {
   }
 }
 
+const warehouseManagerWithoutMenu = {
+  roleNames: ["WarehouseManager"],
+  permissions: [],
+  appMenu: [] as string[],
+};
+
 assertEqual(
   resolveDefaultTabRoute({
     isDeviceMode: true,
@@ -18,6 +25,15 @@ assertEqual(
   }),
   "/(tabs)/product-query",
   "device-bound login defaults to product query"
+);
+
+assertEqual(
+  resolveDefaultTabRoute({
+    isDeviceMode: false,
+    routeNames: warehouseManagerWithoutMenu.appMenu,
+  }),
+  "/(tabs)/settings",
+  "WarehouseManager without permissions or app menu does not default to warehouse"
 );
 
 assertEqual(
@@ -48,6 +64,35 @@ assertEqual(
   expandAttendanceRouteNames(["home", "attendance", "settings"], true).join(","),
   "home,attendance-personal,attendance-management,settings",
   "legacy attendance expands to personal and management attendance for managers"
+);
+
+assertEqual(
+  getVisibleTabRouteNames({
+    routeNames: ["home", "attendance", "device-management", "settings"],
+    isDeviceMode: true,
+    canViewAttendanceManagement: true,
+  }).join(","),
+  "home,attendance-personal,settings",
+  "shared visible routes expand legacy attendance and hide management-only routes in device mode"
+);
+
+assertEqual(
+  getVisibleTabRouteNames({
+    routeNames: ["home", "attendance", "settings"],
+    isDeviceMode: false,
+    canViewAttendanceManagement: true,
+  }).join(","),
+  "home,attendance-personal,attendance-management,settings",
+  "shared visible routes expand legacy attendance to management for users with management permission"
+);
+
+assertEqual(
+  resolveDefaultTabRoute({
+    isDeviceMode: false,
+    routeNames: ["settings"],
+  }),
+  "/(tabs)/settings",
+  "role-only sessions without app menu entries stay on settings"
 );
 
 assertEqual(
@@ -143,9 +188,21 @@ assertEqual(
 );
 
 assertEqual(
+  TAB_PATHS.advertisements,
+  "/(tabs)/advertisements",
+  "advertisements route is registered as a valid tab path"
+);
+
+assertEqual(
   TAB_PATHS["store-vouchers"],
   "/(tabs)/store-vouchers",
   "store vouchers route is registered as a valid tab path"
+);
+
+assertEqual(
+  TAB_PATHS["seasonal-cards"],
+  "/(tabs)/seasonal-cards",
+  "seasonal cards route is registered as a valid tab path"
 );
 
 assertEqual(
@@ -172,6 +229,17 @@ assertEqual(
 
 assertEqual(
   resolveTabRouteCorrection({
+    currentRouteName: "advertisements",
+    hasAppliedDefaultRoute: true,
+    isDeviceMode: false,
+    routeNames: ["home", "advertisements", "settings"],
+  }),
+  null,
+  "advertisements route is allowed when app menu exposes it"
+);
+
+assertEqual(
+  resolveTabRouteCorrection({
     currentRouteName: "store-vouchers",
     hasAppliedDefaultRoute: true,
     isDeviceMode: false,
@@ -179,4 +247,15 @@ assertEqual(
   }),
   null,
   "store vouchers route is allowed when app menu exposes it"
+);
+
+assertEqual(
+  resolveTabRouteCorrection({
+    currentRouteName: "seasonal-cards",
+    hasAppliedDefaultRoute: true,
+    isDeviceMode: false,
+    routeNames: ["home", "seasonal-cards", "settings"],
+  }),
+  null,
+  "seasonal cards route is allowed when app menu exposes it"
 );

@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { CameraView } from "expo-camera";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useFocusEffect, useIsFocused } from "@react-navigation/native";
-import { Button, Card, Modal, Portal, Snackbar, Text } from "react-native-paper";
+import { Button, Card, Modal, Portal, RadioButton, Snackbar, Switch, Text } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LookupResultSheet } from "@/components/product-maintenance/LookupResultSheet";
 import { LabelPrintCard } from "@/components/product-maintenance/LabelPrintCard";
@@ -17,6 +17,7 @@ import { SetCodeCompactSection } from "@/components/product-maintenance/SetCodeC
 import { StickyActionBar } from "@/components/product-maintenance/StickyActionBar";
 import { StoreClearancePriceCard } from "@/components/product-maintenance/StoreClearancePriceCard";
 import { StorePriceStrategyCard } from "@/components/product-maintenance/StorePriceStrategyCard";
+import { StorePickerModal } from "@/components/ui/StorePickerModal";
 import {
   getSavedPrinter,
   printBigDiscountLabel,
@@ -25,10 +26,13 @@ import {
   printProductLabel,
 } from "@/modules/printer/api";
 import { usePrinterStore } from "@/modules/printer/state";
+import { resolveLocalizedErrorMessage } from "@/shared/i18n/error-message";
 import { useAppTranslation } from "@/shared/i18n/use-app-translation";
 import {
+  createProductWithPrices,
   createSetCode,
   evaluateAutoPricing,
+  fetchActiveLocalSuppliers,
   getProductCodes,
   getProductFastDetail,
   lookupProducts,
@@ -38,8 +42,10 @@ import {
   upsertClearancePrice,
 } from "@/modules/product-maintenance/api";
 import { resolveExternalQueryStore } from "@/modules/product-maintenance/external-query-store";
+import { validateCreateProductForm } from "@/modules/product-maintenance/create-product-validation";
 import type {
   EvaluateAutoPricingResult,
+  LocalSupplierOption,
   MultiCodeEditableItem,
   ProductDetail,
   ProductLookupItem,
@@ -51,6 +57,8 @@ import { useHidBarcodeScanner } from "@/modules/scanner/use-hid-barcode-scanner"
 import { playScanFeedbackSound, preloadScanFeedbackSounds } from "@/modules/scanner/scan-sound";
 import type { ScanSource } from "@/modules/scanner/types";
 import { useStores } from "@/modules/shop/use-stores";
+import type { Store } from "@/modules/shop/types";
+import { useAuthStore } from "@/store/auth-store";
 import {
   buildLocalSupplierInvoicesRestoreHref,
   decodeLocalSupplierInvoicesReturnParams,
@@ -235,8 +243,29 @@ interface CodeAddModalState {
   value: string;
 }
 
+interface CreateProductDraft {
+  localSupplierCode: string;
+  itemNumber: string;
+  barcode: string;
+  productName: string;
+  purchasePrice: string;
+  retailPrice: string;
+  isSpecialProduct: boolean;
+  isAutoPricing: boolean;
+}
+
 const PRODUCT_TYPE_OPTIONS = [0, 1, 2] as const;
 const CODE_PAGE_SIZE = 50;
+const EMPTY_CREATE_PRODUCT_DRAFT: CreateProductDraft = {
+  localSupplierCode: "",
+  itemNumber: "",
+  barcode: "",
+  productName: "",
+  purchasePrice: "",
+  retailPrice: "",
+  isSpecialProduct: false,
+  isAutoPricing: false,
+};
 
 const DEFAULT_LOOKUP_FLOW_RESULT: LookupFlowResult = {
   keepCameraOpen: false,
@@ -245,7 +274,7 @@ const DEFAULT_LOOKUP_FLOW_RESULT: LookupFlowResult = {
 };
 
 function ProductQueryContent() {
-  const { t } = useAppTranslation(["productQuery", "common"]);
+  const { t, language } = useAppTranslation(["productQuery", "common"]);
   const router = useRouter();
   const queryParams = useLocalSearchParams<{
     productCode?: string | string[];
@@ -270,9 +299,11 @@ function ProductQueryContent() {
     selectedStore,
     selectedStoreCode,
     selectStore,
+    isDeviceMode,
     isLoading: storesLoading,
     isHydratingSelection,
   } = useStores();
+  const access = useAuthStore((state) => state.access);
   const printerAutoReconnectPaused = usePrinterStore((state) => state.autoReconnectPaused);
   const [keyword, setKeyword] = useState("");
   const [lookupItems, setLookupItems] = useState<ProductLookupItem[]>([]);
@@ -294,6 +325,13 @@ function ProductQueryContent() {
   const [autoPrintOnLookupConfirm, setAutoPrintOnLookupConfirm] = useState(false);
   const [autoPricingDialog, setAutoPricingDialog] = useState<AutoPricingDialogState | null>(null);
   const [autoPricingDialogSaving, setAutoPricingDialogSaving] = useState(false);
+  const [createProductVisible, setCreateProductVisible] = useState(false);
+  const [createProductSaving, setCreateProductSaving] = useState(false);
+  const [createSuppliers, setCreateSuppliers] = useState<LocalSupplierOption[]>([]);
+  const [createSuppliersLoading, setCreateSuppliersLoading] = useState(false);
+  const [createProductDraft, setCreateProductDraft] = useState<CreateProductDraft>(
+    EMPTY_CREATE_PRODUCT_DRAFT
+  );
   const [productTypeDialogVisible, setProductTypeDialogVisible] = useState(false);
   const [productTypeSaving, setProductTypeSaving] = useState(false);
   const [storePurchaseInput, setStorePurchaseInput] = useState("");
@@ -310,6 +348,14 @@ function ProductQueryContent() {
   const [printQuantity, setPrintQuantity] = useState(1);
   const [quantitySingleUse, setQuantitySingleUse] = useState(true);
   const [printSettingsVisible, setPrintSettingsVisible] = useState(false);
+  const [storePickerVisible, setStorePickerVisible] = useState(false);
+  const getErrorMessage = useCallback((error: unknown, fallbackKey: string) => (
+    resolveLocalizedErrorMessage(error, {
+      language,
+      t,
+      fallbackKey,
+    })
+  ), [language, t]);
   const autoPricingDialogResolverRef = useRef<((result: AutoPricingDialogResolution) => void) | null>(null);
   const numericInputConfirmRef = useRef<((value: string) => void) | null>(null);
   const saveClearanceRef = useRef<() => Promise<void>>(async () => {});
@@ -352,8 +398,14 @@ function ProductQueryContent() {
   }, []);
 
   const loadProductCodes = useCallback(
-    async (sourceDetail: ProductDetail, nextPage = 1, append = false): Promise<ProductDetail | undefined> => {
-      if (!selectedStoreCode) {
+    async (
+      sourceDetail: ProductDetail,
+      nextPage = 1,
+      append = false,
+      storeCodeOverride?: string
+    ): Promise<ProductDetail | undefined> => {
+      const storeCode = storeCodeOverride ?? selectedStoreCode;
+      if (!storeCode) {
         return;
       }
 
@@ -375,7 +427,7 @@ function ProductQueryContent() {
         if (sourceDetail.productType === 1 || (sourceDetail.productType !== 2 && hasSetCodes && !hasMultiCodes)) {
           const page = await getProductCodes(
             sourceDetail.productCode,
-            selectedStoreCode,
+            storeCode,
             1,
             nextPage,
             CODE_PAGE_SIZE
@@ -406,7 +458,7 @@ function ProductQueryContent() {
 
         const page = await getProductCodes(
           sourceDetail.productCode,
-          selectedStoreCode,
+          storeCode,
           2,
           nextPage,
           CODE_PAGE_SIZE
@@ -440,7 +492,7 @@ function ProductQueryContent() {
             ? t("messages.lookupTimeout")
             : t("messages.lookupNetworkError");
         } else {
-          detail = error instanceof Error ? error.message : "";
+          detail = getErrorMessage(error, "messages.codesLoadFailed");
         }
         setSnackbarMessage(detail ? `${fallback}: ${detail}` : fallback);
         playQueryFeedback("error");
@@ -473,6 +525,121 @@ function ProductQueryContent() {
     },
     [loadProductCodes, selectedStoreCode, t]
   );
+
+  const canSelectStore = !isDeviceMode && stores.length > 0;
+
+  const handleSelectStore = useCallback(
+    async (store: Store | null) => {
+      if (!store) {
+        return;
+      }
+
+      setStorePickerVisible(false);
+      await selectStore(store);
+
+      if (detail?.productCode) {
+        setLoading(true);
+        try {
+          const payload = await getProductFastDetail(detail.productCode, store.storeCode);
+          setDetail(payload);
+          setInitialDetail(cloneDetail(payload));
+          setLastHitLabel(`${payload.itemNumber || payload.productCode} / ${payload.barcode || "--"}`);
+          setCodePage(1);
+          setCodesHasMore(false);
+          await loadProductCodes(payload, 1, false, store.storeCode);
+        } catch (error) {
+          setDetail(null);
+          setInitialDetail(null);
+          setSelectedLookupProductCode(undefined);
+          setCodePage(1);
+          setCodesHasMore(false);
+          setSnackbarMessage(getErrorMessage(error, "messages.refreshFailed"));
+          playQueryFeedback("error");
+        } finally {
+          setLoading(false);
+        }
+      }
+    },
+    [detail?.productCode, getErrorMessage, loadProductCodes, playQueryFeedback, selectStore]
+  );
+
+  const selectedCreateSupplier = useMemo(
+    () =>
+      createSuppliers.find(
+        (supplier) => supplier.supplierCode === createProductDraft.localSupplierCode
+      ) ?? null,
+    [createProductDraft.localSupplierCode, createSuppliers]
+  );
+
+  const loadCreateSuppliers = useCallback(async () => {
+    setCreateSuppliersLoading(true);
+    try {
+      const suppliers = await fetchActiveLocalSuppliers();
+      setCreateSuppliers(suppliers);
+      setCreateProductDraft((current) =>
+        current.localSupplierCode || !suppliers[0]
+          ? current
+          : { ...current, localSupplierCode: suppliers[0].supplierCode }
+      );
+    } catch (error) {
+      setSnackbarMessage(getErrorMessage(error, "createProduct.messages.suppliersLoadFailed"));
+    } finally {
+      setCreateSuppliersLoading(false);
+    }
+  }, [getErrorMessage]);
+
+  const openCreateProductModal = useCallback(() => {
+    setCreateProductDraft({
+      ...EMPTY_CREATE_PRODUCT_DRAFT,
+      localSupplierCode: createSuppliers[0]?.supplierCode ?? "",
+    });
+    setCreateProductVisible(true);
+    if (!createSuppliers.length) {
+      void loadCreateSuppliers();
+    }
+  }, [createSuppliers, loadCreateSuppliers]);
+
+  const updateCreateProductDraft = useCallback(
+    (patch: Partial<CreateProductDraft>) => {
+      setCreateProductDraft((current) => ({ ...current, ...patch }));
+    },
+    []
+  );
+
+  const handleCreateProductSubmit = useCallback(async () => {
+    const validation = validateCreateProductForm(createProductDraft);
+    if (!validation.ok) {
+      setSnackbarMessage(t(`createProduct.messages.${validation.reason}`));
+      return;
+    }
+
+    setCreateProductSaving(true);
+    let createdProductCode = "";
+    try {
+      const result = await createProductWithPrices(validation.payload);
+      const nextKeyword =
+        result.productCode || validation.payload.itemNumber || validation.payload.barcode;
+      createdProductCode = result.productCode;
+      setCreateProductVisible(false);
+      setCreateProductDraft(EMPTY_CREATE_PRODUCT_DRAFT);
+      setKeyword(nextKeyword);
+      setSnackbarMessage(t("createProduct.messages.created"));
+    } catch (error) {
+      setSnackbarMessage(getErrorMessage(error, "createProduct.messages.createFailed"));
+      setCreateProductSaving(false);
+      return;
+    }
+
+    if (createdProductCode) {
+      try {
+        await loadDetail(createdProductCode);
+      } catch (error) {
+        setSnackbarMessage(getErrorMessage(error, "createProduct.messages.refreshFailedAfterCreate"));
+      }
+    }
+
+    setCreateProductSaving(false);
+  }, [createProductDraft, getErrorMessage, loadDetail, t]);
 
   const persistStorePrice = useCallback(
     async (
@@ -511,13 +678,12 @@ function ProductQueryContent() {
         setInitialDetail(cloneDetail(nextDetail));
         return nextDetail;
       } catch (error) {
-        const fallback = t("messages.autoPricingUpdateFailed");
-        setSnackbarMessage(error instanceof Error ? `${fallback}: ${error.message}` : fallback);
+        setSnackbarMessage(getErrorMessage(error, "messages.autoPricingUpdateFailed"));
         playQueryFeedback("error");
         return null;
       }
     },
-    [loadProductCodes, playQueryFeedback, selectedStoreCode, t]
+    [getErrorMessage, loadProductCodes, playQueryFeedback, selectedStoreCode]
   );
 
   const finishAutoPricingDialog = useCallback((result: AutoPricingDialogResolution) => {
@@ -622,15 +788,14 @@ function ProductQueryContent() {
           error: error instanceof Error ? error.message : String(error),
           stack: error instanceof Error ? error.stack : undefined,
         });
-        const fallback = t("messages.printFailed");
-        setSnackbarMessage(error instanceof Error ? `${fallback}: ${error.message}` : fallback);
+        setSnackbarMessage(getErrorMessage(error, "messages.printFailed"));
         playQueryFeedback("error");
         return false;
       } finally {
         setPrintingAction(null);
       }
     },
-    [playQueryFeedback, printQuantity, printerAutoReconnectPaused, quantitySingleUse, t]
+    [getErrorMessage, playQueryFeedback, printQuantity, printerAutoReconnectPaused, quantitySingleUse, t]
   );
 
   const smartAutoPrint = useCallback(
@@ -679,12 +844,7 @@ function ProductQueryContent() {
             setPrintQuantity(1);
           }
         } catch (error) {
-          const fallback = t("messages.printFailed");
-          setSnackbarMessage(
-            error instanceof Error
-              ? `${fallback}: ${error.message}`
-              : fallback,
-          );
+          setSnackbarMessage(getErrorMessage(error, "messages.printFailed"));
         } finally {
           setPrintingAction(null);
         }
@@ -693,7 +853,7 @@ function ProductQueryContent() {
 
       await sendProductLabel(targetDetail);
     },
-    [printQuantity, quantitySingleUse, sendProductLabel, smallLabel, t],
+    [getErrorMessage, printQuantity, quantitySingleUse, sendProductLabel, smallLabel, t],
   );
 
   const maybeHandleAutoPricing = useCallback(
@@ -759,8 +919,7 @@ function ProductQueryContent() {
 
         return DEFAULT_LOOKUP_FLOW_RESULT;
       } catch (error) {
-        const fallback = t("messages.autoPricingEvaluateFailed");
-        setSnackbarMessage(error instanceof Error ? `${fallback}: ${error.message}` : fallback);
+        setSnackbarMessage(getErrorMessage(error, "messages.autoPricingEvaluateFailed"));
         playQueryFeedback("error");
         return {
           keepCameraOpen: false,
@@ -769,7 +928,7 @@ function ProductQueryContent() {
         };
       }
     },
-    [openAutoPricingDialog, persistStorePrice, playQueryFeedback, selectedStoreCode, t]
+    [getErrorMessage, openAutoPricingDialog, persistStorePrice, playQueryFeedback, selectedStoreCode]
   );
 
   const handleLookup = useCallback(
@@ -856,7 +1015,7 @@ function ProductQueryContent() {
               : t("messages.lookupFailed");
           }
         } else {
-          message = error instanceof Error ? error.message : t("messages.lookupFailed");
+          message = getErrorMessage(error, "messages.lookupFailed");
         }
         console.error("[product-query] lookup failed", {
           keyword: nextKeyword,
@@ -943,7 +1102,7 @@ function ProductQueryContent() {
         }
         await handleLookup(nextKeyword, "manual");
       } catch (error) {
-        setSnackbarMessage(error instanceof Error ? error.message : t("messages.lookupFailed"));
+        setSnackbarMessage(getErrorMessage(error, "messages.lookupFailed"));
         playQueryFeedback("error");
       }
     }
@@ -1027,7 +1186,7 @@ function ProductQueryContent() {
     try {
       await loadDetail(detail.productCode);
     } catch (error) {
-      setSnackbarMessage(error instanceof Error ? error.message : t("messages.refreshFailed"));
+      setSnackbarMessage(getErrorMessage(error, "messages.refreshFailed"));
     } finally {
       setRefreshing(false);
     }
@@ -1065,7 +1224,7 @@ function ProductQueryContent() {
         }
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : t("messages.lookupFailed");
+      const message = getErrorMessage(error, "messages.lookupFailed");
       setDetail(null);
       setInitialDetail(null);
       setQueryFeedback({ type: "error", query: keyword.trim(), message });
@@ -1140,13 +1299,12 @@ function ProductQueryContent() {
         setSnackbarMessage(t("messages.productTypeUpdated"));
         setProductTypeDialogVisible(false);
       } catch (error) {
-        const fallback = t("messages.productTypeUpdateFailed");
-        setSnackbarMessage(error instanceof Error ? `${fallback}: ${error.message}` : fallback);
+        setSnackbarMessage(getErrorMessage(error, "messages.productTypeUpdateFailed"));
       } finally {
         setProductTypeSaving(false);
       }
     },
-    [detail, selectedStoreCode, t]
+    [detail, getErrorMessage, selectedStoreCode, t]
   );
 
   const handleToggleAutoPricing = useCallback(
@@ -1348,12 +1506,12 @@ function ProductQueryContent() {
         await loadDetail(detail.productCode);
         setSnackbarMessage(t("messages.setCodeSaved"));
       } catch (error) {
-        setSnackbarMessage(error instanceof Error ? error.message : t("messages.setCodeSaveFailed"));
+        setSnackbarMessage(getErrorMessage(error, "messages.setCodeSaveFailed"));
       } finally {
         setSavingItemId(null);
       }
     },
-    [detail, loadDetail, selectedStoreCode, t]
+    [detail, getErrorMessage, loadDetail, selectedStoreCode, t]
   );
 
   const openEditSetCodeBarcode = useCallback((setCodeId: string) => {
@@ -1452,11 +1610,11 @@ function ProductQueryContent() {
       await loadDetail(detail.productCode);
       setSnackbarMessage(codeType === "set" ? t("messages.setCodeSaved") : t("messages.multiCodeSaved"));
     } catch (error) {
-      setSnackbarMessage(error instanceof Error ? error.message : t("messages.setCodeSaveFailed"));
+      setSnackbarMessage(getErrorMessage(error, "messages.setCodeSaveFailed"));
     } finally {
       setSavingItemId(null);
     }
-  }, [barcodeEditModal, detail?.productCode, loadDetail, selectedStoreCode, t]);
+  }, [barcodeEditModal, detail?.productCode, getErrorMessage, loadDetail, selectedStoreCode, t]);
 
   const handleConfirmCodeAdd = useCallback(async () => {
     if (!codeAddModal || !detail?.productCode || !selectedStoreCode) {
@@ -1485,11 +1643,11 @@ function ProductQueryContent() {
       await loadDetail(detail.productCode);
       setSnackbarMessage(codeType === "set" ? t("messages.setCodeCreated") : t("messages.multiCodeCreated"));
     } catch (error) {
-      setSnackbarMessage(error instanceof Error ? error.message : t("messages.setCodeSaveFailed"));
+      setSnackbarMessage(getErrorMessage(error, "messages.setCodeSaveFailed"));
     } finally {
       setSavingItemId(null);
     }
-  }, [codeAddModal, detail?.productCode, loadDetail, selectedStoreCode, t]);
+  }, [codeAddModal, detail?.productCode, getErrorMessage, loadDetail, selectedStoreCode, t]);
 
   const openClearancePriceEditor = useCallback(() => {
     openNumericInputModal({
@@ -1526,12 +1684,12 @@ function ProductQueryContent() {
         await loadDetail(detail.productCode);
         setSnackbarMessage(t("messages.multiCodeSaved"));
       } catch (error) {
-        setSnackbarMessage(error instanceof Error ? error.message : t("messages.multiCodeSaveFailed"));
+        setSnackbarMessage(getErrorMessage(error, "messages.multiCodeSaveFailed"));
       } finally {
         setSavingItemId(null);
       }
     },
-    [detail, loadDetail, selectedStoreCode, t]
+    [detail, getErrorMessage, loadDetail, selectedStoreCode, t]
   );
 
   const handleLoadMoreCodes = useCallback(() => {
@@ -1562,11 +1720,11 @@ function ProductQueryContent() {
       await loadDetail(detail.productCode);
       setSnackbarMessage(t("messages.clearanceSaved"));
     } catch (error) {
-      setSnackbarMessage(error instanceof Error ? error.message : t("messages.clearanceSaveFailed"));
+      setSnackbarMessage(getErrorMessage(error, "messages.clearanceSaveFailed"));
     } finally {
       setSavingClearance(false);
     }
-  }, [clearancePriceInput, detail?.productCode, loadDetail, selectedStoreCode, t]);
+  }, [clearancePriceInput, detail?.productCode, getErrorMessage, loadDetail, selectedStoreCode, t]);
 
   saveClearanceRef.current = handleSaveClearancePrice;
 
@@ -1589,11 +1747,11 @@ function ProductQueryContent() {
         setSnackbarMessage(t("messages.saved"));
       }
     } catch (error) {
-      setSnackbarMessage(error instanceof Error ? error.message : t("messages.saveFailed"));
+      setSnackbarMessage(getErrorMessage(error, "messages.saveFailed"));
     } finally {
       setSaving(false);
     }
-  }, [detail, initialDetail, persistStorePrice, t]);
+  }, [detail, getErrorMessage, initialDetail, persistStorePrice, t]);
 
   const handleReset = useCallback(() => {
     setDetail(cloneDetail(initialDetail));
@@ -1694,13 +1852,12 @@ function ProductQueryContent() {
           setPrintQuantity(1);
         }
       } catch (error) {
-        const fallback = t("messages.printFailed");
-        setSnackbarMessage(error instanceof Error ? `${fallback}: ${error.message}` : fallback);
+        setSnackbarMessage(getErrorMessage(error, "messages.printFailed"));
       } finally {
         setPrintingAction(null);
       }
     },
-    [detail, printQuantity, quantitySingleUse, sendProductLabel, smallLabel, t]
+    [detail, getErrorMessage, printQuantity, quantitySingleUse, sendProductLabel, smallLabel, t]
   );
 
   const handleReturnToInvoices = useCallback(() => {
@@ -1727,6 +1884,8 @@ function ProductQueryContent() {
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <QueryHeader
         storeName={selectedStore?.storeName}
+        canSelectStore={canSelectStore}
+        onStorePress={() => setStorePickerVisible(true)}
         onScanPress={() => setCameraVisible(true)}
         onRefreshPress={() => void handleRefresh()}
         refreshing={refreshing}
@@ -1743,6 +1902,13 @@ function ProductQueryContent() {
       />
 
       <ScrollView contentContainerStyle={styles.content}>
+        {access.canCreateStoreProducts ? (
+          <View style={styles.createProductBar}>
+            <Button icon="plus" mode="contained-tonal" onPress={openCreateProductModal}>
+              {t("createProduct.action")}
+            </Button>
+          </View>
+        ) : null}
         {invoiceReturnState ? (
           <View style={styles.returnBar}>
             <Button icon="arrow-left" mode="contained-tonal" onPress={handleReturnToInvoices}>
@@ -1910,6 +2076,157 @@ function ProductQueryContent() {
       />
 
       <Portal>
+        <Modal
+          visible={createProductVisible}
+          onDismiss={createProductSaving ? undefined : () => setCreateProductVisible(false)}
+          contentContainerStyle={styles.createProductModal}
+        >
+          <ScrollView
+            contentContainerStyle={styles.createProductModalContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Text variant="titleMedium" style={styles.createProductTitle}>
+              {t("createProduct.title")}
+            </Text>
+
+            <View style={styles.createFieldGroup}>
+              <Text variant="labelMedium" style={styles.createFieldLabel}>
+                {t("createProduct.fields.supplier")}
+              </Text>
+              {createSuppliersLoading ? (
+                <Text variant="bodySmall" style={styles.createHint}>
+                  {t("createProduct.messages.suppliersLoading")}
+                </Text>
+              ) : createSuppliers.length ? (
+                <ScrollView
+                  style={styles.createSupplierList}
+                  nestedScrollEnabled
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {createSuppliers.map((supplier) => (
+                    <View key={supplier.supplierCode} style={styles.createSupplierItem}>
+                      <RadioButton
+                        value={supplier.supplierCode}
+                        status={
+                          supplier.supplierCode === createProductDraft.localSupplierCode
+                            ? "checked"
+                            : "unchecked"
+                        }
+                        onPress={() =>
+                          updateCreateProductDraft({ localSupplierCode: supplier.supplierCode })
+                        }
+                        disabled={createProductSaving}
+                      />
+                      <Button
+                        mode="text"
+                        compact
+                        onPress={() =>
+                          updateCreateProductDraft({ localSupplierCode: supplier.supplierCode })
+                        }
+                        disabled={createProductSaving}
+                        style={styles.createSupplierButton}
+                        contentStyle={styles.createSupplierButtonContent}
+                      >
+                        {supplier.supplierName || supplier.supplierCode}
+                      </Button>
+                    </View>
+                  ))}
+                </ScrollView>
+              ) : (
+                <Button
+                  mode="outlined"
+                  onPress={() => void loadCreateSuppliers()}
+                  disabled={createProductSaving}
+                >
+                  {t("createProduct.reloadSuppliers")}
+                </Button>
+              )}
+              {selectedCreateSupplier ? (
+                <Text variant="bodySmall" style={styles.createHint}>
+                  {selectedCreateSupplier.supplierCode}
+                </Text>
+              ) : null}
+            </View>
+
+            <TextInput
+              style={styles.createTextInput}
+              value={createProductDraft.itemNumber}
+              onChangeText={(itemNumber) => updateCreateProductDraft({ itemNumber })}
+              placeholder={t("createProduct.fields.itemNumber")}
+              editable={!createProductSaving}
+            />
+            <TextInput
+              style={styles.createTextInput}
+              value={createProductDraft.barcode}
+              onChangeText={(barcode) => updateCreateProductDraft({ barcode })}
+              placeholder={t("createProduct.fields.barcode")}
+              editable={!createProductSaving}
+            />
+            <TextInput
+              style={styles.createTextInput}
+              value={createProductDraft.productName}
+              onChangeText={(productName) => updateCreateProductDraft({ productName })}
+              placeholder={t("createProduct.fields.productName")}
+              editable={!createProductSaving}
+            />
+            <TextInput
+              style={styles.createTextInput}
+              value={createProductDraft.purchasePrice}
+              onChangeText={(purchasePrice) => updateCreateProductDraft({ purchasePrice })}
+              placeholder={t("createProduct.fields.purchasePrice")}
+              keyboardType="decimal-pad"
+              editable={!createProductSaving}
+            />
+            <TextInput
+              style={styles.createTextInput}
+              value={createProductDraft.retailPrice}
+              onChangeText={(retailPrice) => updateCreateProductDraft({ retailPrice })}
+              placeholder={t("createProduct.fields.retailPrice")}
+              keyboardType="decimal-pad"
+              editable={!createProductSaving}
+            />
+
+            <View style={styles.createSwitchRow}>
+              <Text variant="bodyMedium">{t("createProduct.fields.isSpecialProduct")}</Text>
+              <Switch
+                value={createProductDraft.isSpecialProduct}
+                onValueChange={(isSpecialProduct) =>
+                  updateCreateProductDraft({ isSpecialProduct })
+                }
+                disabled={createProductSaving}
+              />
+            </View>
+            <View style={styles.createSwitchRow}>
+              <Text variant="bodyMedium">{t("createProduct.fields.isAutoPricing")}</Text>
+              <Switch
+                value={createProductDraft.isAutoPricing}
+                onValueChange={(isAutoPricing) =>
+                  updateCreateProductDraft({ isAutoPricing })
+                }
+                disabled={createProductSaving}
+              />
+            </View>
+
+            <View style={styles.createProductFooter}>
+              <Button
+                mode="text"
+                onPress={() => setCreateProductVisible(false)}
+                disabled={createProductSaving}
+              >
+                {t("common:actions.cancel")}
+              </Button>
+              <Button
+                mode="contained"
+                loading={createProductSaving}
+                disabled={createProductSaving}
+                onPress={() => void handleCreateProductSubmit()}
+              >
+                {t("createProduct.submit")}
+              </Button>
+            </View>
+          </ScrollView>
+        </Modal>
+
         <Modal
           visible={Boolean(autoPricingDialog)}
           onDismiss={autoPricingDialogSaving ? undefined : () => {
@@ -2161,6 +2478,15 @@ function ProductQueryContent() {
           onToggleQuantitySingleUse={setQuantitySingleUse}
           onDismiss={() => setPrintSettingsVisible(false)}
         />
+        <StorePickerModal
+          visible={storePickerVisible}
+          stores={stores}
+          selectedStoreCode={selectedStoreCode}
+          title={t("common:labels.selectStore")}
+          cancelLabel={t("common:actions.cancel")}
+          onDismiss={() => setStorePickerVisible(false)}
+          onSelectStore={handleSelectStore}
+        />
 
         <Modal
           visible={cameraVisible}
@@ -2230,6 +2556,10 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     paddingTop: 8,
   },
+  createProductBar: {
+    alignItems: "flex-start",
+    paddingTop: 8,
+  },
   hiddenInput: {
     position: "absolute",
     width: 1,
@@ -2265,6 +2595,73 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: "#fff",
     padding: 16,
+  },
+  createProductModal: {
+    marginHorizontal: 16,
+    maxHeight: "88%",
+    borderRadius: 16,
+    backgroundColor: "#fff",
+    padding: 16,
+  },
+  createProductModalContent: {
+    gap: 12,
+    paddingBottom: 4,
+  },
+  createProductTitle: {
+    fontWeight: "700",
+    color: "#111827",
+  },
+  createFieldGroup: {
+    gap: 6,
+  },
+  createFieldLabel: {
+    color: "#344054",
+    fontWeight: "700",
+  },
+  createHint: {
+    color: "#667085",
+  },
+  createSupplierList: {
+    maxHeight: 180,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 8,
+    paddingVertical: 4,
+  },
+  createSupplierItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 44,
+  },
+  createSupplierButton: {
+    flex: 1,
+    minWidth: 0,
+  },
+  createSupplierButtonContent: {
+    justifyContent: "flex-start",
+  },
+  createTextInput: {
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontSize: 16,
+    backgroundColor: "#FFFFFF",
+  },
+  createSwitchRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  createProductFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+    paddingTop: 4,
   },
   autoPricingContent: {
     gap: 12,

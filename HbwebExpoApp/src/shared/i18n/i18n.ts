@@ -11,7 +11,9 @@ import installmentOrdersEn from "@/locales/en/screens/installmentOrders.json";
 import localSupplierInvoicesEn from "@/locales/en/screens/localSupplierInvoices.json";
 import loginEn from "@/locales/en/screens/login.json";
 import ordersEn from "@/locales/en/screens/orders.json";
+import advertisementsEn from "@/locales/en/screens/advertisements.json";
 import productQueryEn from "@/locales/en/screens/productQuery.json";
+import seasonalCardsEn from "@/locales/en/screens/seasonalCards.json";
 import settingsEn from "@/locales/en/screens/settings.json";
 import storeVouchersEn from "@/locales/en/screens/storeVouchers.json";
 import userManagementEn from "@/locales/en/screens/userManagement.json";
@@ -27,7 +29,9 @@ import installmentOrdersZh from "@/locales/zh/screens/installmentOrders.json";
 import localSupplierInvoicesZh from "@/locales/zh/screens/localSupplierInvoices.json";
 import loginZh from "@/locales/zh/screens/login.json";
 import ordersZh from "@/locales/zh/screens/orders.json";
+import advertisementsZh from "@/locales/zh/screens/advertisements.json";
 import productQueryZh from "@/locales/zh/screens/productQuery.json";
+import seasonalCardsZh from "@/locales/zh/screens/seasonalCards.json";
 import settingsZh from "@/locales/zh/screens/settings.json";
 import storeVouchersZh from "@/locales/zh/screens/storeVouchers.json";
 import userManagementZh from "@/locales/zh/screens/userManagement.json";
@@ -52,7 +56,9 @@ const resources = {
     deviceManagement: deviceManagementZh,
     employeeProfile: employeeProfileZh,
     orders: ordersZh,
+    advertisements: advertisementsZh,
     settings: settingsZh,
+    seasonalCards: seasonalCardsZh,
     storeVouchers: storeVouchersZh,
     productQuery: productQueryZh,
     userManagement: userManagementZh,
@@ -70,7 +76,9 @@ const resources = {
     deviceManagement: deviceManagementEn,
     employeeProfile: employeeProfileEn,
     orders: ordersEn,
+    advertisements: advertisementsEn,
     settings: settingsEn,
+    seasonalCards: seasonalCardsEn,
     storeVouchers: storeVouchersEn,
     productQuery: productQueryEn,
     userManagement: userManagementEn,
@@ -100,7 +108,7 @@ if (!i18n.isInitialized) {
     lng: DEFAULT_APP_LANGUAGE,
     fallbackLng: DEFAULT_APP_LANGUAGE,
     defaultNS: "common",
-    ns: ["common", "attendance", "login", "home", "cart", "domesticPurchase", "deviceManagement", "employeeProfile", "installmentOrders", "localSupplierInvoices", "orders", "settings", "storeVouchers", "productQuery", "userManagement", "warehouse"],
+    ns: ["common", "advertisements", "attendance", "login", "home", "cart", "domesticPurchase", "deviceManagement", "employeeProfile", "installmentOrders", "localSupplierInvoices", "orders", "seasonalCards", "settings", "storeVouchers", "productQuery", "userManagement", "warehouse"],
     interpolation: {
       escapeValue: false,
     },

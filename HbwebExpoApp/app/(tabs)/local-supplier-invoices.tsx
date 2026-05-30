@@ -44,7 +44,9 @@ import type {
 } from "@/modules/local-supplier-invoices/types";
 import { printWarehouseProductLabel } from "@/modules/printer/api";
 import type { Store } from "@/modules/shop/types";
+import { bindDeviceStoreFilter, getDeviceBoundStoreCode } from "@/modules/shop/device-bound-store-filter";
 import { useStores } from "@/modules/shop/use-stores";
+import { resolveLocalizedErrorMessage } from "@/shared/i18n/error-message";
 import { useAppTranslation } from "@/shared/i18n/use-app-translation";
 
 type SortOption = InvoiceGridSort & { labelKey: string };
@@ -285,8 +287,20 @@ function PageSizeMenu<T extends number>({
 
 export default function LocalSupplierInvoicesScreen() {
   const { t, language } = useAppTranslation(["localSupplierInvoices", "common", "attendance"]);
+  const getErrorMessage = useCallback((error: unknown, fallbackKey: string) => (
+    resolveLocalizedErrorMessage(error, {
+      language,
+      t,
+      fallbackKey,
+    })
+  ), [language, t]);
   const router = useRouter();
-  const { stores, isLoading: storesLoading } = useStores();
+  const {
+    stores,
+    selectedStoreCode,
+    isDeviceMode,
+    isLoading: storesLoading,
+  } = useStores();
   const searchParams = useLocalSearchParams<{
     source?: string | string[];
     returnInvoiceGuid?: string | string[];
@@ -330,6 +344,7 @@ export default function LocalSupplierInvoicesScreen() {
   const [snackbar, setSnackbar] = useState("");
   const pendingRestoreRef = useRef<ReturnType<typeof decodeLocalSupplierInvoicesReturnParams>>(null);
   const handledRestoreKeyRef = useRef<string | null>(null);
+  const deviceBoundStoreCode = getDeviceBoundStoreCode({ isDeviceMode, selectedStoreCode });
 
   const restoreState = useMemo(
     () => decodeLocalSupplierInvoicesReturnParams(searchParams),
@@ -396,29 +411,44 @@ export default function LocalSupplierInvoicesScreen() {
         allDatesLabel: t("filters.allDates"),
         formatFrom: (date) => t("filters.dateRangeFrom", { date }),
         formatTo: (date) => t("filters.dateRangeTo", { date }),
+        rangeSeparator: " ~ ",
       }
     ).text;
   }, [draftFilters.orderDateFrom, draftFilters.orderDateTo, t]);
 
+  const bindDeviceStore = useCallback(
+    (nextFilters: InvoiceGridFilters) =>
+      bindDeviceStoreFilter(nextFilters, {
+        isDeviceMode,
+        selectedStoreCode,
+        storeField: "storeCode",
+      }),
+    [isDeviceMode, selectedStoreCode]
+  );
+
   const loadInvoices = useCallback(
     async (refresh = false) => {
+      if (isDeviceMode && !selectedStoreCode) {
+        return;
+      }
+
       if (refresh) {
         setRefreshing(true);
       } else {
         setLoading(true);
       }
       try {
-        const result = await fetchInvoices({ page, pageSize, filters, sort });
+        const result = await fetchInvoices({ page, pageSize, filters: bindDeviceStore(filters), sort });
         setItems(result.items);
         setTotal(result.total);
       } catch (error) {
-        setSnackbar(error instanceof Error ? error.message : t("messages.loadFailed"));
+        setSnackbar(getErrorMessage(error, "messages.loadFailed"));
       } finally {
         setLoading(false);
         setRefreshing(false);
       }
     },
-    [filters, page, pageSize, sort, t]
+    [bindDeviceStore, filters, getErrorMessage, isDeviceMode, page, pageSize, selectedStoreCode, sort]
   );
 
   const loadDetails = useCallback(async () => {
@@ -435,11 +465,11 @@ export default function LocalSupplierInvoicesScreen() {
       setDetails(result.items);
       setDetailsTotal(result.total);
     } catch (error) {
-      setSnackbar(error instanceof Error ? error.message : t("messages.detailsLoadFailed"));
+      setSnackbar(getErrorMessage(error, "messages.detailsLoadFailed"));
     } finally {
       setDetailsLoading(false);
     }
-  }, [detailsPage, detailsPageSize, selectedInvoice?.invoiceGuid, t]);
+  }, [detailsPage, detailsPageSize, getErrorMessage, selectedInvoice?.invoiceGuid]);
 
   const loadSuppliers = useCallback(async () => {
     if (suppliersLoading) {
@@ -460,11 +490,11 @@ export default function LocalSupplierInvoicesScreen() {
       setSuppliers(normalizeSupplierOptions(payload));
       setSuppliersLoaded(true);
     } catch (error) {
-      setSnackbar(error instanceof Error ? error.message : t("messages.suppliersLoadFailed"));
+      setSnackbar(getErrorMessage(error, "messages.suppliersLoadFailed"));
     } finally {
       setSuppliersLoading(false);
     }
-  }, [suppliersLoading, t]);
+  }, [getErrorMessage, suppliersLoading, t]);
 
   useEffect(() => {
     void loadInvoices();
@@ -496,9 +526,13 @@ export default function LocalSupplierInvoicesScreen() {
     }
 
     handledRestoreKeyRef.current = restoreKey;
-    pendingRestoreRef.current = restoreState;
-    setDraftFilters(restoreState.filters);
-    setFilters(restoreState.filters);
+    const restoredFilters = bindDeviceStore(restoreState.filters);
+    pendingRestoreRef.current = {
+      ...restoreState,
+      filters: restoredFilters,
+    };
+    setDraftFilters(restoredFilters);
+    setFilters(restoredFilters);
     setSort(restoreState.sort);
     setPageSize(restoreState.returnListPageSize);
     setPage(restoreState.returnListPage);
@@ -507,7 +541,24 @@ export default function LocalSupplierInvoicesScreen() {
     setDetailsTotal(0);
     setDetailsPage(restoreState.returnDetailsPage);
     setDetailsPageSize(restoreState.returnDetailsPageSize);
-  }, [restoreState]);
+  }, [bindDeviceStore, restoreState]);
+
+  useEffect(() => {
+    if (!deviceBoundStoreCode) {
+      return;
+    }
+
+    setDraftFilters((current) =>
+      current.storeCode === deviceBoundStoreCode
+        ? current
+        : { ...current, storeCode: deviceBoundStoreCode }
+    );
+    setFilters((current) =>
+      current.storeCode === deviceBoundStoreCode
+        ? current
+        : { ...current, storeCode: deviceBoundStoreCode }
+    );
+  }, [deviceBoundStoreCode]);
 
   useEffect(() => {
     const pendingRestore = pendingRestoreRef.current;
@@ -535,15 +586,15 @@ export default function LocalSupplierInvoicesScreen() {
 
   const applyFilters = useCallback(() => {
     setPage(1);
-    setFilters(draftFilters);
-  }, [draftFilters]);
+    setFilters(bindDeviceStore(draftFilters));
+  }, [bindDeviceStore, draftFilters]);
 
   const clearFilters = useCallback(() => {
-    const emptyFilters: InvoiceGridFilters = {};
+    const emptyFilters = bindDeviceStore({});
     setDraftFilters(emptyFilters);
     setFilters(emptyFilters);
     setPage(1);
-  }, []);
+  }, [bindDeviceStore]);
 
   const openDetails = useCallback((invoice: LocalSupplierInvoice) => {
     setSelectedInvoice(invoice);
@@ -584,13 +635,12 @@ export default function LocalSupplierInvoicesScreen() {
         });
         setSnackbar(t("messages.printSuccess"));
       } catch (error) {
-        const fallback = t("messages.printFailed");
-        setSnackbar(error instanceof Error ? `${fallback}: ${error.message}` : fallback);
+        setSnackbar(getErrorMessage(error, "messages.printFailed"));
       } finally {
         setPrintingDetailGuid(null);
       }
     },
-    [selectedInvoice?.supplierCode, selectedInvoice?.supplierName, t]
+    [getErrorMessage, selectedInvoice?.supplierCode, selectedInvoice?.supplierName, t]
   );
 
   const openProduct = useCallback(
@@ -632,10 +682,10 @@ export default function LocalSupplierInvoicesScreen() {
           setTimeout(navigate, 0);
         }
       } catch (error) {
-        setSnackbar(error instanceof Error ? error.message : t("messages.productOpenFailed"));
+        setSnackbar(getErrorMessage(error, "messages.productOpenFailed"));
       }
     },
-    [detailsPage, detailsPageSize, filters, page, pageSize, router, selectedInvoice?.invoiceGuid, selectedInvoice?.storeCode, sort, t]
+    [detailsPage, detailsPageSize, filters, getErrorMessage, page, pageSize, router, selectedInvoice?.invoiceGuid, selectedInvoice?.storeCode, sort, t]
   );
 
   const openSupplierPicker = useCallback(() => {
@@ -648,10 +698,10 @@ export default function LocalSupplierInvoicesScreen() {
   const handleSelectStore = useCallback((store: Store | null) => {
     setDraftFilters((current) => ({
       ...current,
-      storeCode: store?.storeCode || undefined,
+      storeCode: deviceBoundStoreCode ?? store?.storeCode ?? undefined,
     }));
     setStorePickerVisible(false);
-  }, []);
+  }, [deviceBoundStoreCode]);
 
   const handleSelectSupplier = useCallback((supplierCode?: string) => {
     setDraftFilters((current) => ({
@@ -674,7 +724,8 @@ export default function LocalSupplierInvoicesScreen() {
     const from = normalizeMonthDate(draftFilters.orderDateFrom);
     const to = normalizeMonthDate(draftFilters.orderDateTo);
     setDateRangeSnapshot({ from, to });
-    setDateRangeDisplayMonth(getMonthStart(parseMonthDate(from || to) ?? new Date()));
+    const displayMonth = parseMonthDate(from || to) ?? new Date();
+    setDateRangeDisplayMonth(getMonthStart(displayMonth));
     setDateRangeModalVisible(true);
   }, [draftFilters.orderDateFrom, draftFilters.orderDateTo]);
 
@@ -968,7 +1019,7 @@ export default function LocalSupplierInvoicesScreen() {
                     <Image source={{ uri: detail.productImage }} style={styles.productImage} />
                   ) : (
                     <View style={styles.productImagePlaceholder}>
-                      <Text variant="labelSmall">IMG</Text>
+                      <Text variant="labelSmall">{t("labels.noImage")}</Text>
                     </View>
                   )}
                   <View style={styles.detailBody}>
@@ -1032,7 +1083,7 @@ export default function LocalSupplierInvoicesScreen() {
         selectedStoreCode={draftFilters.storeCode ?? null}
         title={t("filters.storePickerTitle")}
         cancelLabel={t("common:actions.cancel")}
-        includeAllOption
+        includeAllOption={!deviceBoundStoreCode}
         allLabel={t("filters.allStores")}
         renderAllLabel={(label) => <EntityTag label={label} tone="neutral" />}
         renderStoreLabel={(store) => (

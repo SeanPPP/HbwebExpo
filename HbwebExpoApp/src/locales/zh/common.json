@@ -38,7 +38,9 @@
     "domesticPurchase": "中国采购",
     "localSupplierInvoices": "澳洲进货",
     "installmentOrders": "分期订单",
+    "advertisements": "广告素材",
     "storeVouchers": "门店代金券",
+    "seasonalCards": "季节卡片",
     "attendance": "考勤",
     "attendancePersonal": "考勤",
     "attendanceManagement": "考勤管理",
@@ -66,9 +68,18 @@
     "selectStore": "选择门店",
     "allRelatedStores": "全部相关分店"
   },
+  "placeholders": {
+    "time": "09:00",
+    "date": "YYYY-MM-DD"
+  },
   "errors": {
     "selectStoreFirst": "请先选择门店",
-    "loginFailed": "登录失败"
+    "loginFailed": "登录失败",
+    "network": "网络连接失败，请稍后重试。",
+    "timeout": "请求超时，请稍后重试。",
+    "unauthorized": "登录已失效或当前无权限，请重新登录。",
+    "server": "服务器暂时不可用，请稍后重试。",
+    "requestFailed": "请求失败，请稍后重试。"
   },
   "scanner": {
     "waiting": "等待扫码",

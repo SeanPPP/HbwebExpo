@@ -8,8 +8,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LoadingOverlay } from "@/components/ui/LoadingOverlay";
 import { NumericInputModal } from "@/components/product-maintenance/NumericInputModal";
+import { hasVisibleTabRoute } from "@/modules/navigation/default-route";
+import { useAppNavigationStore } from "@/modules/navigation/store";
 import { useCameraScan } from "@/modules/scanner/use-camera-scan";
 import { useHidBarcodeScanner } from "@/modules/scanner/use-hid-barcode-scanner";
+import { resolveLocalizedErrorMessage } from "@/shared/i18n/error-message";
 import { useAppTranslation } from "@/shared/i18n/use-app-translation";
 import { useAuthStore } from "@/store/auth-store";
 import { useDeviceStore } from "@/store/device-store";
@@ -249,7 +252,7 @@ function LocationPartMenu({
 
 export default function WarehouseScreen() {
   const router = useRouter();
-  const { t } = useAppTranslation(["warehouse", "common"]);
+  const { t, language } = useAppTranslation(["warehouse", "common"]);
   const access = useAuthStore((state) => state.access);
   const deviceSession = useDeviceStore((state) => state.session);
   const hasStoredDeviceSession = Boolean(deviceSession?.hardwareId && deviceSession?.authCode);
@@ -311,9 +314,22 @@ export default function WarehouseScreen() {
   const [editingLocationGuid, setEditingLocationGuid] = useState<string | null>(null);
   const [scannerVisible, setScannerVisible] = useState(false);
   const [photoVisible, setPhotoVisible] = useState(false);
+  const navigationItems = useAppNavigationStore((state) => state.items);
 
-  const hasWarehouseAccess = access.isAdmin || access.isWarehouseManager || access.isWarehouseStaff || hasStoredDeviceSession;
+  const hasWarehouseAccess =
+    hasStoredDeviceSession ||
+    hasVisibleTabRoute(
+      navigationItems.map((item) => item.routeName),
+      "warehouse"
+    );
   const notAvailableText = t("messages.notAvailable");
+  const getErrorMessage = useCallback((error: unknown, fallbackKey: string) => (
+    resolveLocalizedErrorMessage(error, {
+      language,
+      t,
+      fallbackKey,
+    })
+  ), [language, t]);
 
   const parseNullableNumber = useCallback((value: string) => {
     if (!value.trim()) {
@@ -443,7 +459,7 @@ export default function WarehouseScreen() {
         applyProduct(null);
       }
     } catch (error) {
-      setSnackbar(error instanceof Error ? error.message : t("messages.lookupFailed"));
+      setSnackbar(getErrorMessage(error, "messages.lookupFailed"));
     } finally {
       setBusy(false);
     }
@@ -455,7 +471,7 @@ export default function WarehouseScreen() {
       const detail = await getWarehouseProduct(productCode);
       applyProduct(detail);
     } catch (error) {
-      setSnackbar(error instanceof Error ? error.message : t("messages.lookupFailed"));
+      setSnackbar(getErrorMessage(error, "messages.lookupFailed"));
     } finally {
       setBusy(false);
     }
@@ -484,7 +500,7 @@ export default function WarehouseScreen() {
       applyProduct(saved);
       setSnackbar(t("messages.saved"));
     } catch (error) {
-      setSnackbar(error instanceof Error ? error.message : t("messages.saveFailed"));
+      setSnackbar(getErrorMessage(error, "messages.saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -501,7 +517,7 @@ export default function WarehouseScreen() {
       const items = await lookupLocations(keyword);
       setLocationMatches(items);
     } catch (error) {
-      setSnackbar(error instanceof Error ? error.message : t("messages.locationLookupFailed"));
+      setSnackbar(getErrorMessage(error, "messages.locationLookupFailed"));
     } finally {
       setBusy(false);
     }
@@ -520,7 +536,7 @@ export default function WarehouseScreen() {
       setLocationLookupKeyword("");
       setSnackbar(t("messages.locationSaved"));
     } catch (error) {
-      setSnackbar(error instanceof Error ? error.message : t("messages.saveFailed"));
+      setSnackbar(getErrorMessage(error, "messages.saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -535,7 +551,7 @@ export default function WarehouseScreen() {
       await printWarehouseProductLabel(payload);
       setSnackbar(t("messages.printSent"));
     } catch (error) {
-      setSnackbar(error instanceof Error ? error.message : t("messages.printFailed"));
+      setSnackbar(getErrorMessage(error, "messages.printFailed"));
     }
   }, [product, t]);
 
@@ -548,7 +564,7 @@ export default function WarehouseScreen() {
       await printWarehouseLocationLabel(payload);
       setSnackbar(t("messages.printSent"));
     } catch (error) {
-      setSnackbar(error instanceof Error ? error.message : t("messages.printFailed"));
+      setSnackbar(getErrorMessage(error, "messages.printFailed"));
     }
   }, [product, t]);
 
@@ -565,7 +581,7 @@ export default function WarehouseScreen() {
       });
       setSnackbar(t("messages.printSent"));
     } catch (error) {
-      setSnackbar(error instanceof Error ? error.message : t("messages.printFailed"));
+      setSnackbar(getErrorMessage(error, "messages.printFailed"));
     }
   }, [selectedLocation, t]);
 
@@ -595,7 +611,7 @@ export default function WarehouseScreen() {
       setPhotoVisible(false);
       setSnackbar(t("messages.saved"));
     } catch (error) {
-      setSnackbar(error instanceof Error ? error.message : t("messages.uploadFailed"));
+      setSnackbar(getErrorMessage(error, "messages.uploadFailed"));
     } finally {
       setBusy(false);
     }
@@ -620,7 +636,7 @@ export default function WarehouseScreen() {
         applyLocationDetail(null);
       }
     } catch (error) {
-      setSnackbar(error instanceof Error ? error.message : t("messages.locationLookupFailed"));
+      setSnackbar(getErrorMessage(error, "messages.locationLookupFailed"));
     } finally {
       setBusy(false);
     }
@@ -665,7 +681,7 @@ export default function WarehouseScreen() {
       const detail = await getLocationDetail(locationGuid);
       applyLocationDetail(detail);
     } catch (error) {
-      setSnackbar(error instanceof Error ? error.message : t("messages.locationLookupFailed"));
+      setSnackbar(getErrorMessage(error, "messages.locationLookupFailed"));
     } finally {
       setBusy(false);
     }
@@ -713,7 +729,7 @@ export default function WarehouseScreen() {
       setSnackbar(t("messages.saved"));
       await handleLookupLocations();
     } catch (error) {
-      setSnackbar(error instanceof Error ? error.message : t("messages.saveFailed"));
+      setSnackbar(getErrorMessage(error, "messages.saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -731,7 +747,7 @@ export default function WarehouseScreen() {
       setBindModalVisible(false);
       setSnackbar(t("messages.saved"));
     } catch (error) {
-      setSnackbar(error instanceof Error ? error.message : t("messages.locationDeleteFailed"));
+      setSnackbar(getErrorMessage(error, "messages.locationDeleteFailed"));
     } finally {
       setBusy(false);
     }
@@ -766,7 +782,7 @@ export default function WarehouseScreen() {
         setBindInitialQuantity("0");
       }
     } catch (error) {
-      setSnackbar(error instanceof Error ? error.message : t("messages.lookupFailed"));
+      setSnackbar(getErrorMessage(error, "messages.lookupFailed"));
     } finally {
       setBusy(false);
     }
@@ -783,7 +799,7 @@ export default function WarehouseScreen() {
     try {
       initialQuantity = parseInitialQuantity(bindInitialQuantity);
     } catch (error) {
-      setSnackbar(error instanceof Error ? error.message : t("messages.invalidQuantity"));
+      setSnackbar(getErrorMessage(error, "messages.invalidQuantity"));
       return;
     }
 
@@ -835,7 +851,7 @@ export default function WarehouseScreen() {
       applyLocationDetail(detail);
       setSnackbar(t("messages.locationUnbound"));
     } catch (error) {
-      setSnackbar(error instanceof Error ? error.message : t("messages.saveFailed"));
+      setSnackbar(getErrorMessage(error, "messages.saveFailed"));
     } finally {
       setBusy(false);
     }

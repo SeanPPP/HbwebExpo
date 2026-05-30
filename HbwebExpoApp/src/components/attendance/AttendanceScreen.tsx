@@ -60,6 +60,7 @@ import { usePunchVerification } from "@/modules/attendance/use-punch-verificatio
 import type { Store } from "@/modules/shop/types";
 import { useStores } from "@/modules/shop/use-stores";
 import { useStoreUsers } from "@/modules/users";
+import { resolveLocalizedErrorMessage } from "@/shared/i18n/error-message";
 import { useAppTranslation } from "@/shared/i18n/use-app-translation";
 import { useAuthStore } from "@/store/auth-store";
 
@@ -153,7 +154,7 @@ const attendanceKeys = {
 export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { t } = useAppTranslation(["attendance", "common"]);
+  const { t, language } = useAppTranslation(["attendance", "common"]);
   const user = useAuthStore((state) => state.user);
   const access = useAuthStore((state) => state.access);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -181,6 +182,13 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
     useState(getWeekStartDate);
   const [snackbarMessage, setSnackbarMessage] = useState("");
   const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const getErrorMessage = useCallback((error: unknown, fallbackKey: string) => (
+    resolveLocalizedErrorMessage(error, {
+      language,
+      t,
+      fallbackKey,
+    })
+  ), [language, t]);
   const {
     verification,
     isRefreshing: isRefreshingVerification,
@@ -191,10 +199,10 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
     () => (access.isAdmin ? stores : stores.filter(isPrimaryStore)),
     [access.isAdmin, stores],
   );
-  const canReview = access.isAdmin || access.isStoreManager;
-  const canEditAttendanceHoliday =
-    access.isAdmin || access.hasPermission("Attendance.Holiday.EditManagedStore");
-  const canSwitchMainTabs = mode === "combined" && canReview;
+  const canViewAttendanceManagement = access.canViewAttendanceManagement;
+  const canReviewAttendance = access.canReviewAttendance;
+  const canEditAttendanceHoliday = access.canEditAttendanceHoliday;
+  const canSwitchMainTabs = mode === "combined" && canViewAttendanceManagement;
   const isManagementMode =
     mode === "management" ||
     (mode === "combined" && activeMainTab === "management");
@@ -202,10 +210,11 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
     mode === "personal" ||
     (mode === "combined" && activeMainTab === "personal");
   const isManagementTab =
-    canReview &&
+    canViewAttendanceManagement &&
     (mode === "management" ||
       (mode === "combined" && activeMainTab === "management"));
-  const isManagementUnavailable = mode === "management" && !canReview;
+  const isManagementUnavailable =
+    mode === "management" && !canViewAttendanceManagement;
   const isPunchRecordsTab =
     isPersonalTab && activePersonalTab === "punchRecords";
   const isAvailabilityWeekTab =
@@ -248,10 +257,10 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
       return;
     }
 
-    if (!canReview && activeMainTab !== "personal") {
+    if (!canViewAttendanceManagement && activeMainTab !== "personal") {
       setActiveMainTab("personal");
     }
-  }, [activeMainTab, canReview, mode]);
+  }, [activeMainTab, canViewAttendanceManagement, mode]);
 
   const showMessage = useCallback((message: string) => {
     setSnackbarMessage(message);
@@ -353,7 +362,7 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
     },
     onError: (error) =>
       showMessage(
-        error instanceof Error ? error.message : t("messages.punchFailed"),
+        getErrorMessage(error, "messages.punchFailed"),
       ),
   });
 
@@ -365,7 +374,7 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
     },
     onError: (error) =>
       showMessage(
-        error instanceof Error ? error.message : t("messages.saveFailed"),
+        getErrorMessage(error, "messages.saveFailed"),
       ),
   });
 
@@ -383,7 +392,7 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
     },
     onError: (error) =>
       showMessage(
-        error instanceof Error ? error.message : t("messages.saveFailed"),
+        getErrorMessage(error, "messages.saveFailed"),
       ),
   });
 
@@ -395,7 +404,7 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
     },
     onError: (error) =>
       showMessage(
-        error instanceof Error ? error.message : t("messages.cancelFailed"),
+        getErrorMessage(error, "messages.cancelFailed"),
       ),
   });
 
@@ -410,7 +419,7 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
     },
     onError: (error) =>
       showMessage(
-        error instanceof Error ? error.message : t("messages.approvalFailed"),
+        getErrorMessage(error, "messages.approvalFailed"),
       ),
   });
 
@@ -425,7 +434,7 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
     },
     onError: (error) =>
       showMessage(
-        error instanceof Error ? error.message : t("messages.approvalFailed"),
+        getErrorMessage(error, "messages.approvalFailed"),
       ),
   });
 
@@ -437,7 +446,7 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
     },
     onError: (error) =>
       showMessage(
-        error instanceof Error ? error.message : t("messages.saveFailed"),
+        getErrorMessage(error, "messages.saveFailed"),
       ),
   });
 
@@ -455,7 +464,7 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
     },
     onError: (error) =>
       showMessage(
-        error instanceof Error ? error.message : t("messages.saveFailed"),
+        getErrorMessage(error, "messages.saveFailed"),
       ),
   });
 
@@ -467,7 +476,7 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
     },
     onError: (error) =>
       showMessage(
-        error instanceof Error ? error.message : t("messages.cancelFailed"),
+        getErrorMessage(error, "messages.cancelFailed"),
       ),
   });
 
@@ -479,7 +488,7 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
     },
     onError: (error) =>
       showMessage(
-        error instanceof Error ? error.message : t("messages.publishFailed"),
+        getErrorMessage(error, "messages.publishFailed"),
       ),
   });
 
@@ -491,7 +500,7 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
     },
     onError: (error) =>
       showMessage(
-        error instanceof Error ? error.message : t("messages.saveFailed"),
+        getErrorMessage(error, "messages.saveFailed"),
       ),
   });
 
@@ -509,7 +518,7 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
     },
     onError: (error) =>
       showMessage(
-        error instanceof Error ? error.message : t("messages.saveFailed"),
+        getErrorMessage(error, "messages.saveFailed"),
       ),
   });
 
@@ -521,7 +530,7 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
     },
     onError: (error) =>
       showMessage(
-        error instanceof Error ? error.message : t("messages.cancelFailed"),
+        getErrorMessage(error, "messages.cancelFailed"),
       ),
   });
   const syncHolidayMutation = useMutation({
@@ -537,7 +546,7 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
     },
     onError: (error) =>
       showMessage(
-        error instanceof Error ? error.message : t("messages.saveFailed"),
+        getErrorMessage(error, "messages.saveFailed"),
       ),
   });
 
@@ -551,7 +560,7 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
     },
     onError: (error) =>
       showMessage(
-        error instanceof Error ? error.message : t("messages.saveFailed"),
+        getErrorMessage(error, "messages.saveFailed"),
       ),
   });
 
@@ -692,7 +701,7 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
       ]);
     } catch (error) {
       showMessage(
-        error instanceof Error ? error.message : t("messages.refreshFailed"),
+        getErrorMessage(error, "messages.refreshFailed"),
       );
     }
   }, [
@@ -816,11 +825,11 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
         <View style={styles.centered}>
           <EmptyState
             title={t("messages.loadFailed")}
-            description={
-              employeeLoadError instanceof Error
-                ? employeeLoadError.message
-                : t("messages.loadFailed")
-            }
+            description={resolveLocalizedErrorMessage(employeeLoadError, {
+              t,
+              language,
+              fallbackKey: "messages.loadFailed",
+            })}
             primaryAction={{
               label: t("common:actions.retry"),
               icon: "refresh",
@@ -1095,6 +1104,7 @@ export function AttendanceScreen({ mode = "combined" }: AttendanceScreenProps) {
                   emptyMessage={t("leaveManagement.empty")}
                   approvals={leaveApprovals}
                   isBusy={isApprovalBusy}
+                  canReview={canReviewAttendance}
                   onApprove={(approvalGuid, remark) =>
                     approveMutation.mutate({ approvalGuid, remark })
                   }

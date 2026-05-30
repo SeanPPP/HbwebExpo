@@ -22,6 +22,7 @@ import {
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StorePickerModal } from "@/components/ui/StorePickerModal";
 import type { Store } from "@/modules/shop/types";
+import { getDeviceBoundStoreCode } from "@/modules/shop/device-bound-store-filter";
 import { useStores } from "@/modules/shop/use-stores";
 import {
   STORE_STAFF_ROLE,
@@ -33,7 +34,7 @@ import {
 } from "@/modules/users";
 import { calculateAge } from "@/modules/users/profile-display";
 import { validatePasswordValue, validateStoreUserForm, type UserDialogMode } from "@/modules/users/validation";
-import { extractApiErrorMessage } from "@/shared/api/error-message";
+import { resolveLocalizedErrorMessage } from "@/shared/i18n/error-message";
 import { useAppTranslation } from "@/shared/i18n/use-app-translation";
 import { useAuthStore } from "@/store/auth-store";
 
@@ -83,6 +84,7 @@ export default function UsersScreen() {
   const {
     stores,
     selectedStoreCode: rememberedStoreCode,
+    isDeviceMode,
     isHydratingSelection,
     isLoading: storesLoading,
     selectStore,
@@ -101,11 +103,20 @@ export default function UsersScreen() {
   const [resetPasswordVisible, setResetPasswordVisible] = useState(false);
   const [resetPasswordValue, setResetPasswordValue] = useState("");
   const [passwordUser, setPasswordUser] = useState<StoreUserListItem | null>(null);
+  const deviceBoundStoreCode = getDeviceBoundStoreCode({
+    isDeviceMode,
+    selectedStoreCode: rememberedStoreCode,
+  });
 
   const canManageUsers = access.isAdmin || (access.canReadUser && access.canWriteUser);
   const manageableStores = useMemo(
-    () => (access.isAdmin ? stores : stores.filter((store) => store.isPrimary === true)),
-    [access.isAdmin, stores]
+    () =>
+      deviceBoundStoreCode
+        ? stores
+        : access.isAdmin
+          ? stores
+          : stores.filter((store) => store.isPrimary === true),
+    [access.isAdmin, deviceBoundStoreCode, stores]
   );
 
   useEffect(() => {
@@ -114,6 +125,10 @@ export default function UsersScreen() {
     }
 
     setManagedStoreCode((current) => {
+      if (deviceBoundStoreCode) {
+        return deviceBoundStoreCode;
+      }
+
       if (current && manageableStores.some((store) => store.storeCode === current)) {
         return current;
       }
@@ -127,14 +142,17 @@ export default function UsersScreen() {
 
       return null;
     });
-  }, [isHydratingSelection, manageableStores, rememberedStoreCode, storesLoading]);
+  }, [deviceBoundStoreCode, isHydratingSelection, manageableStores, rememberedStoreCode, storesLoading]);
 
   const managedStore = useMemo(
     () => manageableStores.find((store) => store.storeCode === managedStoreCode) ?? null,
     [manageableStores, managedStoreCode]
   );
 
-  const usersQuery = useStoreUsers(canManageUsers ? managedStoreCode : undefined, keyword);
+  const usersQuery = useStoreUsers(
+    canManageUsers ? (isDeviceMode ? deviceBoundStoreCode : managedStoreCode) : undefined,
+    keyword
+  );
   const detailQuery = useStoreUserDetail(
     dialogMode === "edit" ? editingUserGuid : null,
     dialogMode === "edit" ? editingStoreCode : null
@@ -236,7 +254,7 @@ export default function UsersScreen() {
 
   const handleSelectManagedStore = useCallback(
     async (store: Store | null) => {
-      setManagedStoreCode(store?.storeCode ?? null);
+      setManagedStoreCode(deviceBoundStoreCode ?? store?.storeCode ?? null);
       setStorePickerVisible(false);
 
       try {
@@ -245,7 +263,7 @@ export default function UsersScreen() {
         console.warn("[store-users] failed to persist store selection", error);
       }
     },
-    [selectStore]
+    [deviceBoundStoreCode, selectStore]
   );
 
   const handleRefresh = useCallback(async () => {
@@ -253,9 +271,9 @@ export default function UsersScreen() {
       await usersQuery.refetch();
     } catch (error) {
       console.warn("[store-users] refresh failed", error);
-      setSnackbarMessage(extractApiErrorMessage(error, t("messages.refreshFailed")));
+      setSnackbarMessage(resolveLocalizedErrorMessage(error, { t, language, fallbackKey: "messages.refreshFailed" }));
     }
-  }, [t, usersQuery]);
+  }, [language, t, usersQuery]);
 
   const validateForm = useCallback(() => {
     const validationMessage = validateStoreUserForm(formValues, dialogMode, t);
@@ -301,7 +319,7 @@ export default function UsersScreen() {
       resetDialogState();
     } catch (error) {
       console.warn("[store-users] save failed", error);
-      setSnackbarMessage(extractApiErrorMessage(error, t("messages.saveFailed")));
+      setSnackbarMessage(resolveLocalizedErrorMessage(error, { t, language, fallbackKey: "messages.saveFailed" }));
     }
   }, [
     createMutation,
@@ -311,6 +329,7 @@ export default function UsersScreen() {
     formValues,
     managedStoreCode,
     resetDialogState,
+    language,
     t,
     updateMutation,
     validateForm,
@@ -344,14 +363,14 @@ export default function UsersScreen() {
                 setSnackbarMessage(nextEnabled ? t("messages.userEnabled") : t("messages.userDisabled"));
               } catch (error) {
                 console.warn("[store-users] status failed", error);
-                setSnackbarMessage(extractApiErrorMessage(error, t("messages.statusFailed")));
+                setSnackbarMessage(resolveLocalizedErrorMessage(error, { t, language, fallbackKey: "messages.statusFailed" }));
               }
             },
           },
         ]
       );
     },
-    [resolveUserStoreCode, statusMutation, t]
+    [language, resolveUserStoreCode, statusMutation, t]
   );
 
   const openResetPasswordDialog = useCallback((user: StoreUserListItem) => {
@@ -387,10 +406,11 @@ export default function UsersScreen() {
       closeResetPasswordDialog();
     } catch (error) {
       console.warn("[store-users] password reset failed", error);
-      setSnackbarMessage(extractApiErrorMessage(error, t("messages.passwordResetFailed")));
+      setSnackbarMessage(resolveLocalizedErrorMessage(error, { t, language, fallbackKey: "messages.passwordResetFailed" }));
     }
   }, [
     closeResetPasswordDialog,
+    language,
     passwordMutation,
     passwordUser,
     resolveUserStoreCode,
@@ -604,11 +624,11 @@ export default function UsersScreen() {
             {usersQuery.isError ? (
               <EmptyState
                 title={t("messages.loadFailedTitle")}
-                description={
-                  usersQuery.error instanceof Error
-                    ? usersQuery.error.message
-                    : t("messages.loadFailedDescription")
-                }
+                description={resolveLocalizedErrorMessage(usersQuery.error, {
+                  t,
+                  language,
+                  fallbackKey: "messages.loadFailedDescription",
+                })}
                 primaryAction={{
                   label: t("common:actions.retry"),
                   icon: "refresh",
@@ -755,7 +775,7 @@ export default function UsersScreen() {
         selectedStoreCode={managedStoreCode}
         title={t("common:labels.selectStore")}
         cancelLabel={t("common:actions.cancel")}
-        includeAllOption
+        includeAllOption={!deviceBoundStoreCode}
         allLabel={t("currentStore.allRelated")}
         onDismiss={() => setStorePickerVisible(false)}
         onSelectStore={handleSelectManagedStore}
