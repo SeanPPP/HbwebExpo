@@ -1,0 +1,25 @@
+{
+  "lastUpdated": "2026-05-30",
+  "projectTopology": {
+    "backendAdmin": {
+      "name": "管理后端",
+      "path": "/Users/sean/DEV/HBBblazorweb-master-vite",
+      "notes": "管理后端目录"
+    },
+    "webClient": {
+      "name": "Web 端",
+      "path": "/Users/sean/DEV/hbweb_rv",
+      "notes": "Web 端目录"
+    },
+    "mobileClient": {
+      "name": "移动端",
+      "path": "/Users/sean/DEV/HbwebExpo",
+      "notes": "移动端目录"
+    },
+    "posClient": {
+      "name": "收银端",
+      "path": "/Users/sean/DEV/hbpos_win",
+      "notes": "收银端 API + WPF 收银客户端"
+    }
+  }
+}
